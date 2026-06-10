@@ -14,9 +14,9 @@
 
 | Столбец | Тип | Ограничения | Описание |
 |---------|-----|-------------|----------|
-| `id` | `INTEGER` | PK, AUTOINCREMENT | Первичный ключ |
+| `id` | `UUID` | PK, DEFAULT gen_random_uuid() | Первичный ключ |
 | `title` | `VARCHAR(255)` | NOT NULL | Название видео |
-| `file_path` | `VARCHAR(512)` | NOT NULL | Путь к файлу (напр. `static/video.mp4`) |
+| `file_path` | `VARCHAR(512)` | NOT NULL | Object key в SeaweedFS (напр. `videos/video.mp4`) |
 | `views` | `INTEGER` | NOT NULL, DEFAULT 0, CHECK >= 0 | Количество просмотров |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL, DEFAULT now() | Дата и время добавления |
 

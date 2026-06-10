@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import UUID
 
 revision: str = 'fa11cd8a1aea'
 down_revision: Union[str, Sequence[str], None] = None
@@ -19,8 +20,14 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.create_table(
         'videos',
-        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column(
+            'id',
+            UUID(as_uuid=True),
+            server_default=sa.text('gen_random_uuid()'),
+            nullable=False,
+        ),
         sa.Column('title', sa.String(length=255), nullable=False),
+        # SeaweedFS (S3-compatible) object key, e.g. "videos/onboarding.mp4"
         sa.Column('file_path', sa.String(length=512), nullable=False),
         sa.Column(
             'views',

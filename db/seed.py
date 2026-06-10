@@ -2,10 +2,10 @@ from db.database import SessionLocal
 from db.models import Video
 
 SEED_VIDEOS = [
-    {"title": "Вводный инструктаж", "file_path": "static/onboarding.mp4"},
-    {"title": "Корпоративное совещание Q1", "file_path": "static/meeting.mp4"},
-    {"title": "Техническая инструкция", "file_path": "static/instruction.mp4"},
-    {"title": "Итоги квартала", "file_path": "static/quarterly_review.mp4"},
+    {"title": "Вводный инструктаж", "file_path": "videos/onboarding.mp4"},
+    {"title": "Корпоративное совещание Q1", "file_path": "videos/meeting.mp4"},
+    {"title": "Техническая инструкция", "file_path": "videos/instruction.mp4"},
+    {"title": "Итоги квартала", "file_path": "videos/quarterly_review.mp4"},
 ]
 
 
