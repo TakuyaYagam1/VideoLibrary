@@ -2,211 +2,309 @@ package usecase
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/domain"
-	"github.com/go-redis/redismock/v9"
+	usecasemock "github.com/TakuyaYagam1/VideoLibrary/backend/internal/usecase/mock"
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
-	"github.com/wahrwelt-kit/go-cachekit"
+	testifymock "github.com/stretchr/testify/mock"
 )
 
-func TestVideoServiceListVideosUsesCacheAside(t *testing.T) {
+func TestNewVideoServiceValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		repoNil  bool
+		cacheNil bool
+		ttl      time.Duration
+		wantErr  error
+	}{
+		{
+			name:    "repository required",
+			repoNil: true,
+			ttl:     time.Minute,
+			wantErr: errVideoRepositoryRequired,
+		},
+		{
+			name:     "cache required",
+			cacheNil: true,
+			ttl:      time.Minute,
+			wantErr:  errVideoCacheRequired,
+		},
+		{
+			name:    "ttl required",
+			ttl:     0,
+			wantErr: errVideoListTTLRequired,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var repository VideoRepository = usecasemock.NewMockVideoRepository(t)
+			if tt.repoNil {
+				repository = nil
+			}
+			var cache VideoCache = usecasemock.NewMockVideoCache(t)
+			if tt.cacheNil {
+				cache = nil
+			}
+
+			_, err := NewVideoService(repository, cache, tt.ttl)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("NewVideoService() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestVideoServiceListVideos(t *testing.T) {
 	ctx := context.Background()
 	ttl := time.Minute
-	client, mock := redismock.NewClientMock()
-	cache := cachekit.New(client)
-	repository := &fakeVideoRepository{
-		videos: []domain.Video{testVideo("cache-aside", 1)},
+	cachedVideos := []domain.Video{testVideo("cache-hit", 1)}
+	loadedVideos := []domain.Video{testVideo("cache-miss", 2)}
+	errCacheUnavailable := errors.New("cache unavailable")
+	errRepositoryUnavailable := errors.New("repository unavailable")
+
+	tests := []struct {
+		name    string
+		setup   func(*usecasemock.MockVideoRepository, *usecasemock.MockVideoCache)
+		want    []domain.Video
+		wantErr error
+	}{
+		{
+			name: "cache hit returns cached videos",
+			setup: func(_ *usecasemock.MockVideoRepository, cache *usecasemock.MockVideoCache) {
+				cache.EXPECT().
+					GetOrLoadVideos(ctx, VideoListCacheKey, ttl, testifymock.Anything).
+					Return(cachedVideos, nil).
+					Once()
+			},
+			want: cachedVideos,
+		},
+		{
+			name: "cache miss loads videos once through repository",
+			setup: func(repository *usecasemock.MockVideoRepository, cache *usecasemock.MockVideoCache) {
+				repository.EXPECT().
+					ListVideos(testifymock.Anything).
+					Return(loadedVideos, nil).
+					Once()
+				cache.EXPECT().
+					GetOrLoadVideos(ctx, VideoListCacheKey, ttl, testifymock.Anything).
+					RunAndReturn(func(loadCtx context.Context, _ string, _ time.Duration, loadFn func(context.Context) ([]domain.Video, error)) ([]domain.Video, error) {
+						return loadFn(loadCtx)
+					}).
+					Once()
+			},
+			want: loadedVideos,
+		},
+		{
+			name: "cache error is wrapped",
+			setup: func(_ *usecasemock.MockVideoRepository, cache *usecasemock.MockVideoCache) {
+				cache.EXPECT().
+					GetOrLoadVideos(ctx, VideoListCacheKey, ttl, testifymock.Anything).
+					Return(nil, errCacheUnavailable).
+					Once()
+			},
+			wantErr: errCacheUnavailable,
+		},
+		{
+			name: "repository load error is wrapped",
+			setup: func(repository *usecasemock.MockVideoRepository, cache *usecasemock.MockVideoCache) {
+				repository.EXPECT().
+					ListVideos(testifymock.Anything).
+					Return(nil, errRepositoryUnavailable).
+					Once()
+				cache.EXPECT().
+					GetOrLoadVideos(ctx, VideoListCacheKey, ttl, testifymock.Anything).
+					RunAndReturn(func(loadCtx context.Context, _ string, _ time.Duration, loadFn func(context.Context) ([]domain.Video, error)) ([]domain.Video, error) {
+						return loadFn(loadCtx)
+					}).
+					Once()
+			},
+			wantErr: errRepositoryUnavailable,
+		},
 	}
 
-	cachedBytes, err := json.Marshal(repository.videos)
-	if err != nil {
-		t.Fatalf("Marshal() error = %v", err)
-	}
-	mock.ExpectGet(VideoListCacheKey).SetErr(redis.Nil)
-	mock.ExpectSet(VideoListCacheKey, cachedBytes, ttl).SetVal("OK")
-	mock.ExpectGet(VideoListCacheKey).SetVal(string(cachedBytes))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repository := usecasemock.NewMockVideoRepository(t)
+			cache := usecasemock.NewMockVideoCache(t)
+			tt.setup(repository, cache)
+			service := newTestVideoService(t, repository, cache, ttl)
 
-	service, err := NewVideoService(repository, NewCacheKitVideoCache(cache), ttl)
-	if err != nil {
-		t.Fatalf("NewVideoService() error = %v", err)
-	}
+			got, err := service.ListVideos(ctx)
 
-	first, err := service.ListVideos(ctx)
-	if err != nil {
-		t.Fatalf("ListVideos() first error = %v", err)
-	}
-	second, err := service.ListVideos(ctx)
-	if err != nil {
-		t.Fatalf("ListVideos() second error = %v", err)
-	}
-
-	if len(first) != 1 || first[0].Title != "cache-aside" {
-		t.Fatalf("first ListVideos() = %#v", first)
-	}
-	if len(second) != 1 || second[0].Title != "cache-aside" {
-		t.Fatalf("second ListVideos() = %#v", second)
-	}
-	if got := repository.listCalls.Load(); got != 1 {
-		t.Fatalf("repository ListVideos calls = %d, want 1", got)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("redis expectations error = %v", err)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("ListVideos() error = %v, want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ListVideos() error = %v", err)
+			}
+			requireVideos(t, got, tt.want)
+		})
 	}
 }
 
 func TestVideoServiceListVideosSingleflightMiss(t *testing.T) {
 	ctx := context.Background()
 	ttl := time.Minute
-	client, mock := redismock.NewClientMock()
-	cache := cachekit.New(client)
-	videos := []domain.Video{testVideo("singleflight", 3)}
-	cachedBytes, err := json.Marshal(videos)
-	if err != nil {
-		t.Fatalf("Marshal() error = %v", err)
-	}
-	mock.ExpectGet(VideoListCacheKey).SetErr(redis.Nil)
-	mock.ExpectSet(VideoListCacheKey, cachedBytes, ttl).SetVal("OK")
-
+	want := []domain.Video{testVideo("singleflight", 3)}
+	repository := usecasemock.NewMockVideoRepository(t)
+	cache := usecasemock.NewMockVideoCache(t)
+	cacheEntered := make(chan struct{})
 	releaseLoad := make(chan struct{})
-	repository := &fakeVideoRepository{
-		videos:      videos,
-		releaseLoad: releaseLoad,
-	}
-	service, err := NewVideoService(repository, NewCacheKitVideoCache(cache), ttl)
-	if err != nil {
-		t.Fatalf("NewVideoService() error = %v", err)
-	}
+	var cacheCalls atomic.Int64
+	var repositoryCalls atomic.Int64
+
+	repository.EXPECT().
+		ListVideos(testifymock.Anything).
+		RunAndReturn(func(context.Context) ([]domain.Video, error) {
+			repositoryCalls.Add(1)
+			return want, nil
+		}).
+		Once()
+	cache.EXPECT().
+		GetOrLoadVideos(ctx, VideoListCacheKey, ttl, testifymock.Anything).
+		RunAndReturn(func(loadCtx context.Context, _ string, _ time.Duration, loadFn func(context.Context) ([]domain.Video, error)) ([]domain.Video, error) {
+			cacheCalls.Add(1)
+			close(cacheEntered)
+			<-releaseLoad
+			return loadFn(loadCtx)
+		}).
+		Once()
+	service := newTestVideoService(t, repository, cache, ttl)
 
 	const goroutines = 8
+	start := make(chan struct{})
+	var started atomic.Int64
 	var wg sync.WaitGroup
 	errs := make(chan error, goroutines)
-	start := make(chan struct{})
 	for range goroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			<-start
-			_, err := service.ListVideos(ctx)
-			errs <- err
+			started.Add(1)
+			got, err := service.ListVideos(ctx)
+			if err != nil {
+				errs <- err
+				return
+			}
+			if !reflect.DeepEqual(got, want) {
+				errs <- errors.New("unexpected videos")
+				return
+			}
+			errs <- nil
 		}()
 	}
 
 	close(start)
-	waitForRepositoryCall(t, repository, 1)
+	waitForAtomic(t, &started, goroutines)
+	waitForChannel(t, cacheEntered, "cache load did not start")
 	close(releaseLoad)
 	wg.Wait()
 	close(errs)
 
 	for err := range errs {
 		if err != nil {
-			t.Fatalf("ListVideos() error = %v", err)
+			t.Fatalf("ListVideos() goroutine error = %v", err)
 		}
 	}
-	if got := repository.listCalls.Load(); got != 1 {
+	if got := cacheCalls.Load(); got != 1 {
+		t.Fatalf("cache GetOrLoadVideos calls = %d, want 1", got)
+	}
+	if got := repositoryCalls.Load(); got != 1 {
 		t.Fatalf("repository ListVideos calls = %d, want 1", got)
 	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("redis expectations error = %v", err)
-	}
 }
 
-func TestVideoServiceIncrementViewsUsesOutboxRepository(t *testing.T) {
+func TestVideoServiceIncrementViews(t *testing.T) {
 	ctx := context.Background()
-	client, mock := redismock.NewClientMock()
-	cache := cachekit.New(client)
+	ttl := time.Minute
 	videoID := uuid.MustParse("01978a7a-8a40-7a0d-9b2f-6f0c1e544444")
-	want := testVideo("increment", 8)
-	want.ID = videoID
-	repository := &fakeVideoRepository{
-		incrementedVideo: want,
+	incremented := testVideo("increment", 8)
+	incremented.ID = videoID
+	errStorageUnavailable := errors.New("storage unavailable")
+
+	tests := []struct {
+		name    string
+		setup   func(*usecasemock.MockVideoRepository, *usecasemock.MockVideoCache)
+		want    domain.Video
+		wantErr error
+	}{
+		{
+			name: "uses repository outbox path",
+			setup: func(repository *usecasemock.MockVideoRepository, _ *usecasemock.MockVideoCache) {
+				repository.EXPECT().
+					IncrementViewsWithOutbox(ctx, videoID).
+					Return(incremented, nil).
+					Once()
+			},
+			want: incremented,
+		},
+		{
+			name: "preserves not found",
+			setup: func(repository *usecasemock.MockVideoRepository, _ *usecasemock.MockVideoCache) {
+				repository.EXPECT().
+					IncrementViewsWithOutbox(ctx, videoID).
+					Return(domain.Video{}, domain.ErrVideoNotFound).
+					Once()
+			},
+			wantErr: domain.ErrVideoNotFound,
+		},
+		{
+			name: "wraps repository error",
+			setup: func(repository *usecasemock.MockVideoRepository, _ *usecasemock.MockVideoCache) {
+				repository.EXPECT().
+					IncrementViewsWithOutbox(ctx, videoID).
+					Return(domain.Video{}, errStorageUnavailable).
+					Once()
+			},
+			wantErr: errStorageUnavailable,
+		},
 	}
-	service, err := NewVideoService(repository, NewCacheKitVideoCache(cache), time.Minute)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repository := usecasemock.NewMockVideoRepository(t)
+			cache := usecasemock.NewMockVideoCache(t)
+			tt.setup(repository, cache)
+			service := newTestVideoService(t, repository, cache, ttl)
+
+			got, err := service.IncrementViews(ctx, videoID)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("IncrementViews() error = %v, want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("IncrementViews() error = %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("IncrementViews() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func newTestVideoService(t *testing.T, repository VideoRepository, cache VideoCache, ttl time.Duration) *VideoService {
+	t.Helper()
+
+	service, err := NewVideoService(repository, cache, ttl)
 	if err != nil {
 		t.Fatalf("NewVideoService() error = %v", err)
 	}
 
-	got, err := service.IncrementViews(ctx, videoID)
-	if err != nil {
-		t.Fatalf("IncrementViews() error = %v", err)
-	}
-
-	if got != want {
-		t.Fatalf("IncrementViews() = %#v, want %#v", got, want)
-	}
-	if repository.incrementID != videoID {
-		t.Fatalf("repository increment id = %s, want %s", repository.incrementID, videoID)
-	}
-	if got := repository.incrementCalls.Load(); got != 1 {
-		t.Fatalf("repository IncrementViewsWithOutbox calls = %d, want 1", got)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("redis expectations error = %v", err)
-	}
-}
-
-func TestVideoServiceIncrementViewsPreservesNotFound(t *testing.T) {
-	ctx := context.Background()
-	client, mock := redismock.NewClientMock()
-	cache := cachekit.New(client)
-	videoID := uuid.MustParse("01978a7a-8a40-7a0d-9b2f-6f0c1e555555")
-	repository := &fakeVideoRepository{
-		incrementError: domain.ErrVideoNotFound,
-	}
-	service, err := NewVideoService(repository, NewCacheKitVideoCache(cache), time.Minute)
-	if err != nil {
-		t.Fatalf("NewVideoService() error = %v", err)
-	}
-
-	_, err = service.IncrementViews(ctx, videoID)
-	if !errors.Is(err, domain.ErrVideoNotFound) {
-		t.Fatalf("IncrementViews() error = %v, want ErrVideoNotFound", err)
-	}
-	if got := repository.incrementCalls.Load(); got != 1 {
-		t.Fatalf("repository IncrementViewsWithOutbox calls = %d, want 1", got)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("redis expectations error = %v", err)
-	}
-}
-
-type fakeVideoRepository struct {
-	videos           []domain.Video
-	incrementedVideo domain.Video
-	incrementID      uuid.UUID
-	incrementError   error
-	releaseLoad      <-chan struct{}
-	listCalls        atomic.Int64
-	incrementCalls   atomic.Int64
-}
-
-func (r *fakeVideoRepository) ListVideos(context.Context) ([]domain.Video, error) {
-	r.listCalls.Add(1)
-	if r.releaseLoad != nil {
-		<-r.releaseLoad
-	}
-
-	return r.videos, nil
-}
-
-func (r *fakeVideoRepository) GetByID(context.Context, uuid.UUID) (domain.Video, error) {
-	return domain.Video{}, nil
-}
-
-func (r *fakeVideoRepository) IncrementViewsWithOutbox(_ context.Context, id uuid.UUID) (domain.Video, error) {
-	r.incrementCalls.Add(1)
-	r.incrementID = id
-	if r.incrementError != nil {
-		return domain.Video{}, r.incrementError
-	}
-
-	return r.incrementedVideo, nil
+	return service
 }
 
 func testVideo(title string, views int64) domain.Video {
@@ -219,7 +317,15 @@ func testVideo(title string, views int64) domain.Video {
 	}
 }
 
-func waitForRepositoryCall(t *testing.T, repository *fakeVideoRepository, want int64) {
+func requireVideos(t *testing.T, got, want []domain.Video) {
+	t.Helper()
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("videos = %#v, want %#v", got, want)
+	}
+}
+
+func waitForAtomic(t *testing.T, value *atomic.Int64, want int64) {
 	t.Helper()
 
 	deadline := time.After(2 * time.Second)
@@ -229,11 +335,21 @@ func waitForRepositoryCall(t *testing.T, repository *fakeVideoRepository, want i
 	for {
 		select {
 		case <-deadline:
-			t.Fatalf("repository ListVideos calls = %d, want %d", repository.listCalls.Load(), want)
+			t.Fatalf("value = %d, want %d", value.Load(), want)
 		case <-ticker.C:
-			if repository.listCalls.Load() == want {
+			if value.Load() == want {
 				return
 			}
 		}
+	}
+}
+
+func waitForChannel(t *testing.T, ch <-chan struct{}, message string) {
+	t.Helper()
+
+	select {
+	case <-ch:
+	case <-time.After(2 * time.Second):
+		t.Fatal(message)
 	}
 }
