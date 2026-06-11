@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/TakuyaYagam1/VideoLibrary/backend/config"
 	logkit "github.com/wahrwelt-kit/go-logkit"
@@ -52,15 +53,6 @@ func TestNewLoggerSupportsFileOutput(t *testing.T) {
 	}
 }
 
-func TestRunAcceptsNoopLoggerFromContext(t *testing.T) {
-	ctx := logkit.IntoContext(context.Background(), logkit.Noop())
-
-	application := &App{config: testConfig()}
-	if err := application.Run(ctx); err != nil {
-		t.Fatalf("Run() error = %v", err)
-	}
-}
-
 func testConfig() config.Config {
 	return config.Config{
 		App: config.App{
@@ -68,7 +60,10 @@ func testConfig() config.Config {
 			Env:  "test",
 		},
 		HTTP: config.HTTP{
-			Addr: "127.0.0.1:8080",
+			Addr:              "127.0.0.1:8080",
+			ReadHeaderTimeout: time.Second,
+			WriteTimeout:      time.Second,
+			ShutdownTimeout:   time.Second,
 		},
 		Log: config.Log{
 			Level:  "debug",

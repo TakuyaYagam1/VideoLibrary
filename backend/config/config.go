@@ -28,7 +28,10 @@ type App struct {
 }
 
 type HTTP struct {
-	Addr string
+	Addr              string
+	ReadHeaderTimeout time.Duration
+	WriteTimeout      time.Duration
+	ShutdownTimeout   time.Duration
 }
 
 type PostgreSQL struct {
@@ -135,6 +138,18 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	httpReadHeaderTimeout, err := optionalDuration(lookup, "HTTP_READ_HEADER_TIMEOUT", 5*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	httpWriteTimeout, err := optionalDuration(lookup, "HTTP_WRITE_TIMEOUT", 30*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	httpShutdownTimeout, err := optionalDuration(lookup, "HTTP_SHUTDOWN_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
 	postgresMaxConns, err := optionalInt(lookup, "POSTGRES_MAX_CONNS", 0)
 	if err != nil {
 		return Config{}, err
@@ -158,7 +173,10 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 			Env:  values["APP_ENV"],
 		},
 		HTTP: HTTP{
-			Addr: values["HTTP_ADDR"],
+			Addr:              values["HTTP_ADDR"],
+			ReadHeaderTimeout: httpReadHeaderTimeout,
+			WriteTimeout:      httpWriteTimeout,
+			ShutdownTimeout:   httpShutdownTimeout,
 		},
 		PostgreSQL: PostgreSQL{
 			DSN:            values["POSTGRES_DSN"],
@@ -203,6 +221,15 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 func (c Config) Validate() error {
 	if err := validateTCPAddr("HTTP_ADDR", c.HTTP.Addr); err != nil {
 		return err
+	}
+	if c.HTTP.ReadHeaderTimeout <= 0 {
+		return fmt.Errorf("HTTP_READ_HEADER_TIMEOUT must be greater than 0")
+	}
+	if c.HTTP.WriteTimeout <= 0 {
+		return fmt.Errorf("HTTP_WRITE_TIMEOUT must be greater than 0")
+	}
+	if c.HTTP.ShutdownTimeout <= 0 {
+		return fmt.Errorf("HTTP_SHUTDOWN_TIMEOUT must be greater than 0")
 	}
 
 	if err := validatePostgresDSN(c.PostgreSQL.DSN); err != nil {

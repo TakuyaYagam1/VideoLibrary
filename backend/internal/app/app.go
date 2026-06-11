@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/TakuyaYagam1/VideoLibrary/backend/config"
+	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/restapi"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/repo/persistent"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/usecase"
 	pgconnector "github.com/TakuyaYagam1/VideoLibrary/backend/pkg/postgres"
@@ -20,6 +22,7 @@ type App struct {
 	redisClient  *redis.Client
 	cache        *cachekit.Cache
 	videoService *usecase.VideoService
+	httpServer   *HTTPServer
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
@@ -56,12 +59,25 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
+	router := NewRouter(
+		videoService,
+		restapi.NewHealthCheckers(
+			pool.Ping,
+			func(ctx context.Context) error {
+				return redisClient.Ping(ctx).Err()
+			},
+		),
+		cfg.Health.CheckTimeout,
+		logger,
+	)
+
 	return &App{
 		config:       cfg,
 		postgresPool: pool,
 		redisClient:  redisClient,
 		cache:        cache,
 		videoService: videoService,
+		httpServer:   NewHTTPServer(cfg.HTTP, router, logger),
 	}, nil
 }
 
@@ -86,6 +102,9 @@ func (a *App) Run(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if a.httpServer == nil {
+		return fmt.Errorf("http server is not configured")
+	}
 
 	logger := logkit.FromContext(ctx)
 	logger.DebugContext(ctx, "logger configured",
@@ -103,5 +122,5 @@ func (a *App) Run(ctx context.Context) error {
 		},
 	)
 
-	return nil
+	return a.httpServer.Run(ctx)
 }

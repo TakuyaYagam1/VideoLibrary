@@ -8,6 +8,9 @@ services:
       APP_NAME: videolibrary
       APP_ENV: local
       HTTP_ADDR: 0.0.0.0:8080
+      HTTP_READ_HEADER_TIMEOUT: 5s
+      HTTP_WRITE_TIMEOUT: 30s
+      HTTP_SHUTDOWN_TIMEOUT: 10s
       POSTGRES_DSN: postgres://videolibrary:videolibrary@postgres:5432/videolibrary?sslmode=disable
       REDIS_HOST: redis
       REDIS_PORT: "6379"

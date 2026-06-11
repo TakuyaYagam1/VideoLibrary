@@ -12,6 +12,9 @@ func TestLoadReadsConfigFromEnvironment(t *testing.T) {
 		"APP_NAME":                 "videolibrary",
 		"APP_ENV":                  "test",
 		"HTTP_ADDR":                "127.0.0.1:8080",
+		"HTTP_READ_HEADER_TIMEOUT": "1500ms",
+		"HTTP_WRITE_TIMEOUT":       "4s",
+		"HTTP_SHUTDOWN_TIMEOUT":    "5s",
 		"POSTGRES_DSN":             "postgres://videolibrary:videolibrary@127.0.0.1:5432/videolibrary?sslmode=disable",
 		"POSTGRES_MAX_CONNS":       "12",
 		"POSTGRES_MIN_CONNS":       "2",
@@ -41,6 +44,15 @@ func TestLoadReadsConfigFromEnvironment(t *testing.T) {
 	}
 	if cfg.HTTP.Addr != "127.0.0.1:8080" {
 		t.Fatalf("HTTP.Addr = %q", cfg.HTTP.Addr)
+	}
+	if cfg.HTTP.ReadHeaderTimeout != 1500*time.Millisecond {
+		t.Fatalf("HTTP.ReadHeaderTimeout = %s", cfg.HTTP.ReadHeaderTimeout)
+	}
+	if cfg.HTTP.WriteTimeout != 4*time.Second {
+		t.Fatalf("HTTP.WriteTimeout = %s", cfg.HTTP.WriteTimeout)
+	}
+	if cfg.HTTP.ShutdownTimeout != 5*time.Second {
+		t.Fatalf("HTTP.ShutdownTimeout = %s", cfg.HTTP.ShutdownTimeout)
 	}
 	if cfg.PostgreSQL.DSN == "" {
 		t.Fatal("PostgreSQL.DSN is empty")
