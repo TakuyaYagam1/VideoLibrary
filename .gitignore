@@ -1,0 +1,15 @@
+.cursor
+PRD.md
+tasks.json
+progress.md
+progress.txt
+.env
+.env.local
+backend/bin/
+backend/.venv-codegen/
+backend/coverage.out
+backend/coverage.html
+.idea/
+.vscode/
+*.swp
+*.swo
