@@ -1,0 +1,36 @@
+Video:
+  type: object
+  additionalProperties: false
+  required:
+    - id
+    - title
+    - file_path
+    - views
+    - created_at
+  properties:
+    id:
+      type: string
+      format: uuid
+      description: Video identifier.
+      example: "018f7a8f-0e2b-7a57-9c2d-6a6c94d0c114"
+    title:
+      type: string
+      minLength: 1
+      description: Human-readable video title.
+      example: Corporate onboarding
+    file_path:
+      type: string
+      minLength: 1
+      description: SeaweedFS object path or public MP4 URL used by the player.
+      example: videos/onboarding.mp4
+    views:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Number of recorded playback starts.
+      example: 42
+    created_at:
+      type: string
+      format: date-time
+      description: Video creation timestamp.
+      example: "2026-06-11T12:00:00Z"

@@ -1,14 +1,16 @@
 package domain
 
-type VideoID string
+import (
+	"time"
 
-func (id VideoID) String() string {
-	return string(id)
-}
+	"github.com/google/uuid"
+)
 
+// Video describes a media file tracked by the library.
 type Video struct {
-	ID       VideoID
-	Title    string
-	FilePath string
-	Views    int64
+	ID        uuid.UUID
+	Title     string
+	FilePath  string
+	Views     int64
+	CreatedAt time.Time
 }

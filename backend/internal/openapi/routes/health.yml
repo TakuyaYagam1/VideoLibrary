@@ -1,0 +1,21 @@
+paths:
+  /healthz:
+    get:
+      operationId: getHealthz
+      tags:
+        - health
+      summary: Health check
+      description: Returns the application health status.
+      responses:
+        "200":
+          description: Application is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "../components/schemas.yml#/HealthResponse"
+        "503":
+          description: Application is degraded.
+          content:
+            application/json:
+              schema:
+                $ref: "../components/schemas.yml#/HealthResponse"

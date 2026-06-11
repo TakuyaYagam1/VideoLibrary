@@ -49,6 +49,9 @@ func TestLoadReadsConfigFromEnvironment(t *testing.T) {
 	if cfg.Log.Level != "debug" {
 		t.Fatalf("Log.Level = %q", cfg.Log.Level)
 	}
+	if cfg.Log.Output != "console" {
+		t.Fatalf("Log.Output = %q", cfg.Log.Output)
+	}
 }
 
 func TestLoadReportsMissingRequiredEnvironment(t *testing.T) {
@@ -90,6 +93,24 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		"SEAWEEDFS_PUBLIC_URL": "http://127.0.0.1:8888",
 		"LOG_LEVEL":            "verbose",
 		"LOG_FORMAT":           "json",
+	}
+
+	if _, err := LoadFromLookup(mapLookup(env)); err == nil {
+		t.Fatal("Load() error = nil")
+	}
+}
+
+func TestLoadRejectsFileOutputWithoutPath(t *testing.T) {
+	env := map[string]string{
+		"APP_NAME":             "videolibrary",
+		"APP_ENV":              "test",
+		"HTTP_ADDR":            "127.0.0.1:8080",
+		"POSTGRES_DSN":         "postgres://videolibrary:videolibrary@127.0.0.1:5432/videolibrary?sslmode=disable",
+		"REDIS_ADDR":           "127.0.0.1:6379",
+		"SEAWEEDFS_PUBLIC_URL": "http://127.0.0.1:8888",
+		"LOG_LEVEL":            "debug",
+		"LOG_FORMAT":           "json",
+		"LOG_OUTPUT":           "file",
 	}
 
 	if _, err := LoadFromLookup(mapLookup(env)); err == nil {

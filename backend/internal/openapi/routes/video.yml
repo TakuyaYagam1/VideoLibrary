@@ -1,0 +1,63 @@
+paths:
+  /api/videos:
+    get:
+      operationId: listVideos
+      tags:
+        - videos
+      summary: List videos
+      description: Returns all video metadata, including SeaweedFS file paths and view counters.
+      responses:
+        "200":
+          description: Video list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "../components/schemas.yml#/Video"
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "../components/schemas.yml#/ErrorResponse"
+  /api/videos/{id}/view:
+    post:
+      operationId: incrementVideoViews
+      tags:
+        - videos
+      summary: Increment video views
+      description: Increments the view counter for a video and returns the updated value.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Video UUID.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Updated view counter.
+          content:
+            application/json:
+              schema:
+                $ref: "../components/schemas.yml#/IncrementViewsResponse"
+        "400":
+          description: Invalid video UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "../components/schemas.yml#/ErrorResponse"
+        "404":
+          description: Video was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "../components/schemas.yml#/ErrorResponse"
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "../components/schemas.yml#/ErrorResponse"

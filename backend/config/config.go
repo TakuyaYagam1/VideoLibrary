@@ -43,8 +43,10 @@ type SeaweedFS struct {
 }
 
 type Log struct {
-	Level  string
-	Format string
+	Level    string
+	Format   string
+	Output   string
+	FilePath string
 }
 
 type MissingRequiredEnvError struct {
@@ -114,8 +116,10 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 			PublicURL: values["SEAWEEDFS_PUBLIC_URL"],
 		},
 		Log: Log{
-			Level:  values["LOG_LEVEL"],
-			Format: values["LOG_FORMAT"],
+			Level:    values["LOG_LEVEL"],
+			Format:   values["LOG_FORMAT"],
+			Output:   optionalStringDefault(lookup, "LOG_OUTPUT", "console"),
+			FilePath: optionalString(lookup, "LOG_FILE_PATH"),
 		},
 	}
 
@@ -155,12 +159,30 @@ func (c Config) Validate() error {
 		return fmt.Errorf("LOG_FORMAT must be one of json, text")
 	}
 
+	switch c.Log.Output {
+	case "console", "file", "both":
+	default:
+		return fmt.Errorf("LOG_OUTPUT must be one of console, file, both")
+	}
+	if (c.Log.Output == "file" || c.Log.Output == "both") && c.Log.FilePath == "" {
+		return fmt.Errorf("LOG_FILE_PATH is required when LOG_OUTPUT is file or both")
+	}
+
 	return nil
 }
 
 func optionalString(lookup func(string) (string, bool), name string) string {
 	value, _ := lookup(name)
 	return strings.TrimSpace(value)
+}
+
+func optionalStringDefault(lookup func(string) (string, bool), name string, fallback string) string {
+	value := optionalString(lookup, name)
+	if value == "" {
+		return fallback
+	}
+
+	return value
 }
 
 func optionalInt(lookup func(string) (string, bool), name string, fallback int) (int, error) {

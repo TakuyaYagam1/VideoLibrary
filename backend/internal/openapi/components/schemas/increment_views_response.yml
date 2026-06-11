@@ -1,0 +1,18 @@
+IncrementViewsResponse:
+  type: object
+  additionalProperties: false
+  required:
+    - id
+    - views
+  properties:
+    id:
+      type: string
+      format: uuid
+      description: Video identifier.
+      example: "018f7a8f-0e2b-7a57-9c2d-6a6c94d0c114"
+    views:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Updated number of recorded playback starts.
+      example: 43

@@ -1,0 +1,6 @@
+package: openapi
+output: internal/openapi/server.gen.go
+generate:
+  chi-server: true
+output-options:
+  skip-prune: true

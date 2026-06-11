@@ -1,0 +1,21 @@
+openapi: 3.0.3
+info:
+  title: VideoLibrary API
+  version: 0.1.0
+  description: REST API for the corporate video library.
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+security: []
+paths:
+  /api/videos:
+    $ref: "./routes/video.yml#/paths/~1api~1videos"
+  /api/videos/{id}/view:
+    $ref: "./routes/video.yml#/paths/~1api~1videos~1{id}~1view"
+  /healthz:
+    $ref: "./routes/health.yml#/paths/~1healthz"
+components:
+  schemas:
+    $ref: "./components/schemas.yml"
+  securitySchemes:
+    $ref: "./components/security.yml"

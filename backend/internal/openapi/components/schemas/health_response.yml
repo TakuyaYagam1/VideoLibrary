@@ -1,0 +1,13 @@
+HealthResponse:
+  type: object
+  additionalProperties: false
+  required:
+    - status
+  properties:
+    status:
+      type: string
+      enum:
+        - ok
+        - degraded
+      description: Current application health status.
+      example: ok
