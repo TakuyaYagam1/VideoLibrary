@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -29,7 +30,12 @@ type HTTP struct {
 }
 
 type PostgreSQL struct {
-	DSN string
+	DSN            string
+	MaxConns       int
+	MinConns       int
+	RetryTimeout   time.Duration
+	ConnectTimeout time.Duration
+	MigrationsPath string
 }
 
 type Redis struct {
@@ -95,6 +101,22 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	postgresMaxConns, err := optionalInt(lookup, "POSTGRES_MAX_CONNS", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	postgresMinConns, err := optionalInt(lookup, "POSTGRES_MIN_CONNS", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	postgresRetryTimeout, err := optionalDuration(lookup, "POSTGRES_RETRY_TIMEOUT", 30*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	postgresConnectTimeout, err := optionalDuration(lookup, "POSTGRES_CONNECT_TIMEOUT", 5*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
 		App: App{
@@ -105,7 +127,12 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 			Addr: values["HTTP_ADDR"],
 		},
 		PostgreSQL: PostgreSQL{
-			DSN: values["POSTGRES_DSN"],
+			DSN:            values["POSTGRES_DSN"],
+			MaxConns:       postgresMaxConns,
+			MinConns:       postgresMinConns,
+			RetryTimeout:   postgresRetryTimeout,
+			ConnectTimeout: postgresConnectTimeout,
+			MigrationsPath: optionalStringDefault(lookup, "POSTGRES_MIGRATIONS_PATH", "migrations"),
 		},
 		Redis: Redis{
 			Addr:     values["REDIS_ADDR"],
@@ -137,6 +164,12 @@ func (c Config) Validate() error {
 
 	if err := validatePostgresDSN(c.PostgreSQL.DSN); err != nil {
 		return err
+	}
+	if c.PostgreSQL.MinConns > c.PostgreSQL.MaxConns && c.PostgreSQL.MaxConns > 0 {
+		return fmt.Errorf("POSTGRES_MIN_CONNS must be less than or equal to POSTGRES_MAX_CONNS")
+	}
+	if c.PostgreSQL.MigrationsPath == "" {
+		return fmt.Errorf("POSTGRES_MIGRATIONS_PATH must not be empty")
 	}
 
 	if err := validateTCPAddr("REDIS_ADDR", c.Redis.Addr); err != nil {
@@ -198,6 +231,24 @@ func optionalInt(lookup func(string) (string, bool), name string, fallback int) 
 	}
 	if parsed < 0 {
 		return 0, fmt.Errorf("%s must be greater than or equal to 0", name)
+	}
+
+	return parsed, nil
+}
+
+func optionalDuration(lookup func(string) (string, bool), name string, fallback time.Duration) (time.Duration, error) {
+	value, ok := lookup(name)
+	value = strings.TrimSpace(value)
+	if !ok || value == "" {
+		return fallback, nil
+	}
+
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a duration: %w", name, err)
+	}
+	if parsed <= 0 {
+		return 0, fmt.Errorf("%s must be greater than 0", name)
 	}
 
 	return parsed, nil

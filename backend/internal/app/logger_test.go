@@ -55,7 +55,8 @@ func TestNewLoggerSupportsFileOutput(t *testing.T) {
 func TestRunAcceptsNoopLoggerFromContext(t *testing.T) {
 	ctx := logkit.IntoContext(context.Background(), logkit.Noop())
 
-	if err := New(testConfig()).Run(ctx); err != nil {
+	application := &App{config: testConfig()}
+	if err := application.Run(ctx); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 }

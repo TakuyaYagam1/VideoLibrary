@@ -28,7 +28,16 @@ func main() {
 	defer closeLogger(logger)
 
 	ctx = logkit.IntoContext(ctx, logger)
-	if err := app.New(cfg).Run(ctx); err != nil {
+
+	application, err := app.New(ctx, cfg)
+	if err != nil {
+		logger.Error("initialize application", logkit.Error(err))
+		closeLogger(logger)
+		os.Exit(1)
+	}
+	defer application.Close()
+
+	if err := application.Run(ctx); err != nil {
 		logger.Error("application failed", logkit.Error(err))
 		closeLogger(logger)
 		os.Exit(1)

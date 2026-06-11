@@ -4,16 +4,39 @@ import (
 	"context"
 
 	"github.com/TakuyaYagam1/VideoLibrary/backend/config"
+	"github.com/jackc/pgx/v5/pgxpool"
 	logkit "github.com/wahrwelt-kit/go-logkit"
 )
 
 type App struct {
-	config config.Config
+	config       config.Config
+	postgresPool *pgxpool.Pool
 }
 
-func New(cfg config.Config) *App {
+func New(ctx context.Context, cfg config.Config) (*App, error) {
+	logger := logkit.FromContext(ctx)
+
+	pool, err := NewPostgresPool(ctx, cfg.PostgreSQL)
+	if err != nil {
+		logger.ErrorContext(ctx, "connect postgres", logkit.Component("app"), logkit.Error(err))
+		return nil, err
+	}
+
+	if err := RunMigrations(ctx, cfg.PostgreSQL); err != nil {
+		logger.ErrorContext(ctx, "run postgres migrations", logkit.Component("app"), logkit.Error(err))
+		pool.Close()
+		return nil, err
+	}
+
 	return &App{
-		config: cfg,
+		config:       cfg,
+		postgresPool: pool,
+	}, nil
+}
+
+func (a *App) Close() {
+	if a.postgresPool != nil {
+		a.postgresPool.Close()
 	}
 }
 

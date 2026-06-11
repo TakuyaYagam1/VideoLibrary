@@ -4,20 +4,26 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestLoadReadsConfigFromEnvironment(t *testing.T) {
 	env := map[string]string{
-		"APP_NAME":             "videolibrary",
-		"APP_ENV":              "test",
-		"HTTP_ADDR":            "127.0.0.1:8080",
-		"POSTGRES_DSN":         "postgres://videolibrary:videolibrary@127.0.0.1:5432/videolibrary?sslmode=disable",
-		"REDIS_ADDR":           "127.0.0.1:6379",
-		"REDIS_PASSWORD":       "redis-password",
-		"REDIS_DB":             "2",
-		"SEAWEEDFS_PUBLIC_URL": "http://127.0.0.1:8888",
-		"LOG_LEVEL":            "debug",
-		"LOG_FORMAT":           "json",
+		"APP_NAME":                 "videolibrary",
+		"APP_ENV":                  "test",
+		"HTTP_ADDR":                "127.0.0.1:8080",
+		"POSTGRES_DSN":             "postgres://videolibrary:videolibrary@127.0.0.1:5432/videolibrary?sslmode=disable",
+		"POSTGRES_MAX_CONNS":       "12",
+		"POSTGRES_MIN_CONNS":       "2",
+		"POSTGRES_RETRY_TIMEOUT":   "4s",
+		"POSTGRES_CONNECT_TIMEOUT": "2s",
+		"POSTGRES_MIGRATIONS_PATH": "migrations",
+		"REDIS_ADDR":               "127.0.0.1:6379",
+		"REDIS_PASSWORD":           "redis-password",
+		"REDIS_DB":                 "2",
+		"SEAWEEDFS_PUBLIC_URL":     "http://127.0.0.1:8888",
+		"LOG_LEVEL":                "debug",
+		"LOG_FORMAT":               "json",
 	}
 
 	cfg, err := LoadFromLookup(mapLookup(env))
@@ -33,6 +39,21 @@ func TestLoadReadsConfigFromEnvironment(t *testing.T) {
 	}
 	if cfg.PostgreSQL.DSN == "" {
 		t.Fatal("PostgreSQL.DSN is empty")
+	}
+	if cfg.PostgreSQL.MaxConns != 12 {
+		t.Fatalf("PostgreSQL.MaxConns = %d", cfg.PostgreSQL.MaxConns)
+	}
+	if cfg.PostgreSQL.MinConns != 2 {
+		t.Fatalf("PostgreSQL.MinConns = %d", cfg.PostgreSQL.MinConns)
+	}
+	if cfg.PostgreSQL.RetryTimeout != 4*time.Second {
+		t.Fatalf("PostgreSQL.RetryTimeout = %s", cfg.PostgreSQL.RetryTimeout)
+	}
+	if cfg.PostgreSQL.ConnectTimeout != 2*time.Second {
+		t.Fatalf("PostgreSQL.ConnectTimeout = %s", cfg.PostgreSQL.ConnectTimeout)
+	}
+	if cfg.PostgreSQL.MigrationsPath != "migrations" {
+		t.Fatalf("PostgreSQL.MigrationsPath = %q", cfg.PostgreSQL.MigrationsPath)
 	}
 	if cfg.Redis.Addr != "127.0.0.1:6379" {
 		t.Fatalf("Redis.Addr = %q", cfg.Redis.Addr)
@@ -93,6 +114,24 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		"SEAWEEDFS_PUBLIC_URL": "http://127.0.0.1:8888",
 		"LOG_LEVEL":            "verbose",
 		"LOG_FORMAT":           "json",
+	}
+
+	if _, err := LoadFromLookup(mapLookup(env)); err == nil {
+		t.Fatal("Load() error = nil")
+	}
+}
+
+func TestLoadRejectsInvalidPostgresDuration(t *testing.T) {
+	env := map[string]string{
+		"APP_NAME":               "videolibrary",
+		"APP_ENV":                "test",
+		"HTTP_ADDR":              "127.0.0.1:8080",
+		"POSTGRES_DSN":           "postgres://videolibrary:videolibrary@127.0.0.1:5432/videolibrary?sslmode=disable",
+		"POSTGRES_RETRY_TIMEOUT": "soon",
+		"REDIS_ADDR":             "127.0.0.1:6379",
+		"SEAWEEDFS_PUBLIC_URL":   "http://127.0.0.1:8888",
+		"LOG_LEVEL":              "debug",
+		"LOG_FORMAT":             "json",
 	}
 
 	if _, err := LoadFromLookup(mapLookup(env)); err == nil {
