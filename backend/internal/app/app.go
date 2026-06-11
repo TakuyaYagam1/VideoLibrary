@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/wahrwelt-kit/go-cachekit"
 	logkit "github.com/wahrwelt-kit/go-logkit"
+	"golang.org/x/sync/errgroup"
 )
 
 type App struct {
@@ -23,20 +24,20 @@ type App struct {
 	cache        *cachekit.Cache
 	videoService *usecase.VideoService
 	httpServer   *HTTPServer
+	outboxWorker *OutboxWorker
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
 	logger := logkit.FromContext(ctx)
 
-	pool, err := pgconnector.NewPool(ctx, cfg.PostgreSQL)
-	if err != nil {
-		logger.ErrorContext(ctx, "connect postgres", logkit.Component("app"), logkit.Error(err))
+	if err := pgconnector.RunMigrations(ctx, cfg.PostgreSQL); err != nil {
+		logger.ErrorContext(ctx, "run postgres migrations", logkit.Component("app"), logkit.Error(err))
 		return nil, err
 	}
 
-	if err := pgconnector.RunMigrations(ctx, cfg.PostgreSQL); err != nil {
-		logger.ErrorContext(ctx, "run postgres migrations", logkit.Component("app"), logkit.Error(err))
-		pool.Close()
+	pool, err := pgconnector.NewPool(ctx, cfg.PostgreSQL)
+	if err != nil {
+		logger.ErrorContext(ctx, "connect postgres", logkit.Component("app"), logkit.Error(err))
 		return nil, err
 	}
 
@@ -70,6 +71,13 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		cfg.Health.CheckTimeout,
 		logger,
 	)
+	outboxWorker, err := NewOutboxWorker(persistent.NewOutboxRepository(pool), cache, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "create outbox worker", logkit.Component("app"), logkit.Error(err))
+		_ = redisClient.Close()
+		pool.Close()
+		return nil, err
+	}
 
 	return &App{
 		config:       cfg,
@@ -78,6 +86,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		cache:        cache,
 		videoService: videoService,
 		httpServer:   NewHTTPServer(cfg.HTTP, router, logger),
+		outboxWorker: outboxWorker,
 	}, nil
 }
 
@@ -105,6 +114,9 @@ func (a *App) Run(ctx context.Context) error {
 	if a.httpServer == nil {
 		return fmt.Errorf("http server is not configured")
 	}
+	if a.outboxWorker == nil {
+		return fmt.Errorf("outbox worker is not configured")
+	}
 
 	logger := logkit.FromContext(ctx)
 	logger.DebugContext(ctx, "logger configured",
@@ -122,5 +134,13 @@ func (a *App) Run(ctx context.Context) error {
 		},
 	)
 
-	return a.httpServer.Run(ctx)
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.Go(func() error {
+		return a.httpServer.Run(groupCtx)
+	})
+	group.Go(func() error {
+		return a.outboxWorker.Run(groupCtx)
+	})
+
+	return group.Wait()
 }
