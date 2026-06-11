@@ -24,7 +24,7 @@ var (
 type VideoRepository interface {
 	ListVideos(ctx context.Context) ([]domain.Video, error)
 	GetByID(ctx context.Context, id uuid.UUID) (domain.Video, error)
-	IncrementViews(ctx context.Context, id uuid.UUID) (domain.Video, error)
+	IncrementViewsWithOutbox(ctx context.Context, id uuid.UUID) (domain.Video, error)
 }
 
 // VideoService coordinates video use cases.
@@ -75,4 +75,14 @@ func (s *VideoService) ListVideos(ctx context.Context) ([]domain.Video, error) {
 	}
 
 	return videos, nil
+}
+
+// IncrementViews records a view and relies on the transactional outbox worker to invalidate VideoListCacheKey.
+func (s *VideoService) IncrementViews(ctx context.Context, id uuid.UUID) (domain.Video, error) {
+	video, err := s.repository.IncrementViewsWithOutbox(ctx, id)
+	if err != nil {
+		return domain.Video{}, fmt.Errorf("increment video views: %w", err)
+	}
+
+	return video, nil
 }

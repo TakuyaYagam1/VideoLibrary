@@ -51,6 +51,10 @@ func (r *VideoRepository) GetByID(ctx context.Context, id uuid.UUID) (domain.Vid
 }
 
 func (r *VideoRepository) IncrementViews(ctx context.Context, id uuid.UUID) (domain.Video, error) {
+	return r.IncrementViewsWithOutbox(ctx, id)
+}
+
+func (r *VideoRepository) IncrementViewsWithOutbox(ctx context.Context, id uuid.UUID) (domain.Video, error) {
 	eventID, err := uuid.NewV7()
 	if err != nil {
 		return domain.Video{}, fmt.Errorf("create outbox event id: %w", err)

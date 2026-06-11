@@ -105,7 +105,7 @@ func (r *fakeVideoRepository) GetByID(context.Context, uuid.UUID) (domain.Video,
 	return domain.Video{}, nil
 }
 
-func (r *fakeVideoRepository) IncrementViews(context.Context, uuid.UUID) (domain.Video, error) {
+func (r *fakeVideoRepository) IncrementViewsWithOutbox(context.Context, uuid.UUID) (domain.Video, error) {
 	return domain.Video{}, nil
 }
 

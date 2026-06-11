@@ -91,12 +91,15 @@ VALUES ($1, $2, $3, $4, now())
 		t.Fatalf("GetByID() error = %v, want ErrVideoNotFound", err)
 	}
 
-	incremented, err := repository.IncrementViews(ctx, videoID)
+	incremented, err := repository.IncrementViewsWithOutbox(ctx, videoID)
 	if err != nil {
-		t.Fatalf("IncrementViews() error = %v", err)
+		t.Fatalf("IncrementViewsWithOutbox() error = %v", err)
 	}
 	if incremented.Views != video.Views+1 {
-		t.Fatalf("IncrementViews().Views = %d, want %d", incremented.Views, video.Views+1)
+		t.Fatalf("IncrementViewsWithOutbox().Views = %d, want %d", incremented.Views, video.Views+1)
+	}
+	if _, err := repository.IncrementViewsWithOutbox(ctx, missingID); !errors.Is(err, domain.ErrVideoNotFound) {
+		t.Fatalf("IncrementViewsWithOutbox() error = %v, want ErrVideoNotFound", err)
 	}
 
 	var outboxCount int
