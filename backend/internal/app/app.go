@@ -10,9 +10,9 @@ type App struct {
 	config config.Config
 }
 
-func New() *App {
+func New(cfg config.Config) *App {
 	return &App{
-		config: config.Default(),
+		config: cfg,
 	}
 }
 

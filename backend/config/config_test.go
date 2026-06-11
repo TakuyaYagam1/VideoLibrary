@@ -1,0 +1,105 @@
+package config
+
+import (
+	"errors"
+	"reflect"
+	"testing"
+)
+
+func TestLoadReadsConfigFromEnvironment(t *testing.T) {
+	env := map[string]string{
+		"APP_NAME":             "videolibrary",
+		"APP_ENV":              "test",
+		"HTTP_ADDR":            "127.0.0.1:8080",
+		"POSTGRES_DSN":         "postgres://videolibrary:videolibrary@127.0.0.1:5432/videolibrary?sslmode=disable",
+		"REDIS_ADDR":           "127.0.0.1:6379",
+		"REDIS_PASSWORD":       "redis-password",
+		"REDIS_DB":             "2",
+		"SEAWEEDFS_PUBLIC_URL": "http://127.0.0.1:8888",
+		"LOG_LEVEL":            "debug",
+		"LOG_FORMAT":           "json",
+	}
+
+	cfg, err := LoadFromLookup(mapLookup(env))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.App.Name != "videolibrary" {
+		t.Fatalf("App.Name = %q", cfg.App.Name)
+	}
+	if cfg.HTTP.Addr != "127.0.0.1:8080" {
+		t.Fatalf("HTTP.Addr = %q", cfg.HTTP.Addr)
+	}
+	if cfg.PostgreSQL.DSN == "" {
+		t.Fatal("PostgreSQL.DSN is empty")
+	}
+	if cfg.Redis.Addr != "127.0.0.1:6379" {
+		t.Fatalf("Redis.Addr = %q", cfg.Redis.Addr)
+	}
+	if cfg.Redis.Password != "redis-password" {
+		t.Fatalf("Redis.Password = %q", cfg.Redis.Password)
+	}
+	if cfg.Redis.DB != 2 {
+		t.Fatalf("Redis.DB = %d", cfg.Redis.DB)
+	}
+	if cfg.SeaweedFS.PublicURL != "http://127.0.0.1:8888" {
+		t.Fatalf("SeaweedFS.PublicURL = %q", cfg.SeaweedFS.PublicURL)
+	}
+	if cfg.Log.Level != "debug" {
+		t.Fatalf("Log.Level = %q", cfg.Log.Level)
+	}
+}
+
+func TestLoadReportsMissingRequiredEnvironment(t *testing.T) {
+	env := map[string]string{
+		"APP_NAME":  "videolibrary",
+		"HTTP_ADDR": "127.0.0.1:8080",
+	}
+
+	_, err := LoadFromLookup(mapLookup(env))
+	if err == nil {
+		t.Fatal("Load() error = nil")
+	}
+
+	var missing MissingRequiredEnvError
+	if !errors.As(err, &missing) {
+		t.Fatalf("Load() error type = %T", err)
+	}
+
+	expected := []string{
+		"APP_ENV",
+		"LOG_FORMAT",
+		"LOG_LEVEL",
+		"POSTGRES_DSN",
+		"REDIS_ADDR",
+		"SEAWEEDFS_PUBLIC_URL",
+	}
+	if !reflect.DeepEqual(missing.Names, expected) {
+		t.Fatalf("missing names = %#v, want %#v", missing.Names, expected)
+	}
+}
+
+func TestLoadRejectsInvalidValues(t *testing.T) {
+	env := map[string]string{
+		"APP_NAME":             "videolibrary",
+		"APP_ENV":              "test",
+		"HTTP_ADDR":            "127.0.0.1:8080",
+		"POSTGRES_DSN":         "postgres://videolibrary:videolibrary@127.0.0.1:5432/videolibrary?sslmode=disable",
+		"REDIS_ADDR":           "127.0.0.1:6379",
+		"SEAWEEDFS_PUBLIC_URL": "http://127.0.0.1:8888",
+		"LOG_LEVEL":            "verbose",
+		"LOG_FORMAT":           "json",
+	}
+
+	if _, err := LoadFromLookup(mapLookup(env)); err == nil {
+		t.Fatal("Load() error = nil")
+	}
+}
+
+func mapLookup(env map[string]string) func(string) (string, bool) {
+	return func(name string) (string, bool) {
+		value, ok := env[name]
+		return value, ok
+	}
+}
