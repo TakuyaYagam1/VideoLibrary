@@ -1,0 +1,200 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION_FILE: backend/go.mod
+  GO_CACHE_DEPENDENCY_PATH: backend/go.sum
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.3
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache-dependency-path: ${{ env.GO_CACHE_DEPENDENCY_PATH }}
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11.4
+          working-directory: backend
+          args: --config=.golangci.yml ./...
+
+  deps-audit:
+    name: deps-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.3
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache-dependency-path: ${{ env.GO_CACHE_DEPENDENCY_PATH }}
+
+      - name: Install govulncheck
+        working-directory: backend
+        run: |
+          GOBIN="${PWD}/bin" go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+
+      - name: Run dependency audit
+        working-directory: backend
+        run: |
+          mkdir -p ../artifacts
+          set -o pipefail
+          make deps-audit 2>&1 | tee ../artifacts/deps-audit.log
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: deps-audit-artifacts
+          path: artifacts/
+          if-no-files-found: ignore
+
+  unit:
+    name: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.3
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache-dependency-path: ${{ env.GO_CACHE_DEPENDENCY_PATH }}
+
+      - name: Run unit tests
+        working-directory: backend
+        run: |
+          mkdir -p ../artifacts
+          set -o pipefail
+          make test 2>&1 | tee ../artifacts/unit.log
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: unit-artifacts
+          path: artifacts/
+          if-no-files-found: ignore
+
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.3
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache-dependency-path: ${{ env.GO_CACHE_DEPENDENCY_PATH }}
+
+      - name: Run integration tests
+        working-directory: backend
+        run: |
+          mkdir -p ../artifacts
+          set -o pipefail
+          make test-integration 2>&1 | tee ../artifacts/integration.log
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: integration-artifacts
+          path: artifacts/
+          if-no-files-found: ignore
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.3
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache-dependency-path: ${{ env.GO_CACHE_DEPENDENCY_PATH }}
+
+      - name: Run e2e tests
+        working-directory: backend
+        run: |
+          mkdir -p ../artifacts
+          set -o pipefail
+          make test-e2e 2>&1 | tee ../artifacts/e2e.log
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: e2e-artifacts
+          path: artifacts/
+          if-no-files-found: ignore
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.3
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache-dependency-path: ${{ env.GO_CACHE_DEPENDENCY_PATH }}
+
+      - name: Build Go binary
+        working-directory: backend
+        run: |
+          mkdir -p ../artifacts
+          set -o pipefail
+          go build ./... 2>&1 | tee ../artifacts/go-build.log
+
+      - name: Build Docker image
+        run: |
+          mkdir -p artifacts
+          set -o pipefail
+          docker build -t videolibrary-app:ci -f backend/Dockerfile backend 2>&1 | tee artifacts/docker-build.log
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-artifacts
+          path: artifacts/
+          if-no-files-found: ignore

@@ -1,0 +1,8 @@
+.venv-codegen/
+bin/
+coverage.out
+coverage.html
+tmp/
+*.test
+.git/
+.gitignore
