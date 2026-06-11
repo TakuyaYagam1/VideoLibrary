@@ -72,11 +72,11 @@ func (r *VideoRepository) IncrementViewsWithOutbox(ctx context.Context, id uuid.
 	}()
 
 	query := r.query.WithTx(tx)
-	if _, err := query.IncrementViewsWithOutbox(ctx, sqlc.IncrementViewsWithOutboxParams{
+	if _, incrementErr := query.IncrementViewsWithOutbox(ctx, sqlc.IncrementViewsWithOutboxParams{
 		VideoID:       pgUUID(id),
 		OutboxEventID: pgUUID(eventID),
-	}); err != nil {
-		return domain.Video{}, mapVideoError("increment video views", err)
+	}); incrementErr != nil {
+		return domain.Video{}, mapVideoError("increment video views", incrementErr)
 	}
 
 	row, err := query.GetVideoByID(ctx, pgUUID(id))

@@ -1,0 +1,10 @@
+version: 2
+
+secret:
+  ignored-paths:
+    - .env.example
+    - backend/bin/**
+    - backend/.venv-codegen/**
+    - backend/coverage.out
+    - backend/coverage.html
+  ignored-matches: []

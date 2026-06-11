@@ -1,0 +1,14 @@
+title = "VideoLibrary gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "allow local examples and generated development artifacts"
+paths = [
+  '''^\.env\.example$''',
+  '''^backend/bin/''',
+  '''^backend/\.venv-codegen/''',
+  '''^backend/coverage\.out$''',
+  '''^backend/coverage\.html$''',
+]

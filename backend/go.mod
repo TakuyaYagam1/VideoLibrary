@@ -2,6 +2,8 @@ module github.com/TakuyaYagam1/VideoLibrary/backend
 
 go 1.26.0
 
+toolchain go1.26.4
+
 require (
 	github.com/getkin/kin-openapi v0.140.0
 	github.com/go-chi/chi/v5 v5.3.0

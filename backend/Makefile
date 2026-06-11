@@ -21,6 +21,7 @@ endif
 
 APP_BIN := bin/videolibrary
 GO_PACKAGES := ./...
+GO_PROD_PACKAGES := ./cmd/... ./config/... ./internal/... ./pkg/...
 GO_FILES := $(shell find . -type f -name '*.go' -not -path './bin/*')
 POSTGRES_DSN ?= postgres://videolibrary:videolibrary@localhost:5432/videolibrary?sslmode=disable
 BASE_STACK := docker compose -f ../docker-compose.yml --env-file $(ENV_FILE)
@@ -212,9 +213,9 @@ mod-tidy: ## Tidy Go module dependencies.
 
 lint: ## Run golangci-lint when available, otherwise go vet.
 	@if [ -x "$(GOLANGCI_LINT)" ]; then \
-		$(GOLANGCI_LINT) run; \
+		$(GOLANGCI_LINT) run $(GO_PACKAGES); \
 	elif command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run; \
+		golangci-lint run $(GO_PACKAGES); \
 	else \
 		go vet $(GO_PACKAGES); \
 	fi
@@ -223,9 +224,9 @@ lint-fix: fmt mod-tidy lint test ## Format, tidy, lint, and test the backend.
 
 deps-audit: ## Run govulncheck when available.
 	@if [ -x "$(GOVULNCHECK)" ]; then \
-		$(GOVULNCHECK) $(GO_PACKAGES); \
+		$(GOVULNCHECK) $(GO_PROD_PACKAGES); \
 	elif command -v govulncheck >/dev/null 2>&1; then \
-		govulncheck $(GO_PACKAGES); \
+		govulncheck $(GO_PROD_PACKAGES); \
 	else \
 		echo "govulncheck is not installed; run make install-tools"; \
 	fi

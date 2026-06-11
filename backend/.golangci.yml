@@ -1,0 +1,38 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - gosec
+    - bodyclose
+    - misspell
+  settings:
+    errcheck:
+      check-type-assertions: true
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+    gosec:
+      severity: medium
+      confidence: medium
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+run:
+  relative-path-mode: gomod
+  timeout: 5m
+
+exclusions:
+  generated: lax
+  paths:
+    - ".*\\.gen\\.go$"
+    - ".*_mock\\.go$"
+    - ".*\\.sql\\.go$"

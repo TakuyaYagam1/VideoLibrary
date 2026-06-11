@@ -40,8 +40,8 @@ func TestNewLoggerSupportsFileOutput(t *testing.T) {
 	}
 
 	logger.Info("file output test")
-	if err := logger.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
+	if closeErr := logger.Close(); closeErr != nil {
+		t.Fatalf("Close() error = %v", closeErr)
 	}
 
 	data, err := os.ReadFile(cfg.Log.FilePath)
