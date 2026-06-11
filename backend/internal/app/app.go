@@ -5,12 +5,16 @@ import (
 
 	"github.com/TakuyaYagam1/VideoLibrary/backend/config"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+	"github.com/wahrwelt-kit/go-cachekit"
 	logkit "github.com/wahrwelt-kit/go-logkit"
 )
 
 type App struct {
 	config       config.Config
 	postgresPool *pgxpool.Pool
+	redisClient  *redis.Client
+	cache        *cachekit.Cache
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
@@ -28,16 +32,32 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
+	redisClient, cache, err := NewRedisCache(ctx, cfg.Redis)
+	if err != nil {
+		logger.ErrorContext(ctx, "connect redis", logkit.Component("app"), logkit.Error(err))
+		pool.Close()
+		return nil, err
+	}
+
 	return &App{
 		config:       cfg,
 		postgresPool: pool,
+		redisClient:  redisClient,
+		cache:        cache,
 	}, nil
 }
 
 func (a *App) Close() {
+	if a.redisClient != nil {
+		_ = a.redisClient.Close()
+	}
 	if a.postgresPool != nil {
 		a.postgresPool.Close()
 	}
+}
+
+func (a *App) Cache() *cachekit.Cache {
+	return a.cache
 }
 
 func (a *App) Run(ctx context.Context) error {

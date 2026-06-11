@@ -39,9 +39,12 @@ type PostgreSQL struct {
 }
 
 type Redis struct {
-	Addr     string
-	Password string
-	DB       int
+	Host         string
+	Port         int
+	Password     string
+	DB           int
+	PoolSize     int
+	MinIdleConns int
 }
 
 type SeaweedFS struct {
@@ -73,7 +76,6 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		"APP_ENV",
 		"HTTP_ADDR",
 		"POSTGRES_DSN",
-		"REDIS_ADDR",
 		"SEAWEEDFS_PUBLIC_URL",
 		"LOG_LEVEL",
 		"LOG_FORMAT",
@@ -92,12 +94,26 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		values[name] = value
 	}
 
+	redisHost, redisPort, redisMissing, err := redisEndpoint(lookup)
+	if err != nil {
+		return Config{}, err
+	}
+	missing = append(missing, redisMissing...)
+
 	if len(missing) > 0 {
 		sort.Strings(missing)
 		return Config{}, MissingRequiredEnvError{Names: missing}
 	}
 
 	redisDB, err := optionalInt(lookup, "REDIS_DB", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	redisPoolSize, err := optionalInt(lookup, "REDIS_POOL_SIZE", 0)
+	if err != nil {
+		return Config{}, err
+	}
+	redisMinIdleConns, err := optionalInt(lookup, "REDIS_MIN_IDLE_CONNS", 0)
 	if err != nil {
 		return Config{}, err
 	}
@@ -135,9 +151,12 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 			MigrationsPath: optionalStringDefault(lookup, "POSTGRES_MIGRATIONS_PATH", "migrations"),
 		},
 		Redis: Redis{
-			Addr:     values["REDIS_ADDR"],
-			Password: optionalString(lookup, "REDIS_PASSWORD"),
-			DB:       redisDB,
+			Host:         redisHost,
+			Port:         redisPort,
+			Password:     optionalString(lookup, "REDIS_PASSWORD"),
+			DB:           redisDB,
+			PoolSize:     redisPoolSize,
+			MinIdleConns: redisMinIdleConns,
 		},
 		SeaweedFS: SeaweedFS{
 			PublicURL: values["SEAWEEDFS_PUBLIC_URL"],
@@ -172,8 +191,11 @@ func (c Config) Validate() error {
 		return fmt.Errorf("POSTGRES_MIGRATIONS_PATH must not be empty")
 	}
 
-	if err := validateTCPAddr("REDIS_ADDR", c.Redis.Addr); err != nil {
-		return err
+	if c.Redis.Port < 1 || c.Redis.Port > 65535 {
+		return fmt.Errorf("REDIS_PORT must be in range 1-65535")
+	}
+	if c.Redis.PoolSize > 0 && c.Redis.MinIdleConns > c.Redis.PoolSize {
+		return fmt.Errorf("REDIS_MIN_IDLE_CONNS must be less than or equal to REDIS_POOL_SIZE")
 	}
 
 	if err := validateHTTPURL("SEAWEEDFS_PUBLIC_URL", c.SeaweedFS.PublicURL); err != nil {
@@ -225,6 +247,55 @@ func optionalInt(lookup func(string) (string, bool), name string, fallback int) 
 		return fallback, nil
 	}
 
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an integer: %w", name, err)
+	}
+	if parsed < 0 {
+		return 0, fmt.Errorf("%s must be greater than or equal to 0", name)
+	}
+
+	return parsed, nil
+}
+
+func redisEndpoint(lookup func(string) (string, bool)) (string, int, []string, error) {
+	host := optionalString(lookup, "REDIS_HOST")
+	portValue, portOK := lookup("REDIS_PORT")
+	portValue = strings.TrimSpace(portValue)
+
+	if host != "" && portOK && portValue != "" {
+		port, err := parseInt("REDIS_PORT", portValue)
+		return host, port, nil, err
+	}
+
+	if host == "" && (!portOK || portValue == "") {
+		addr := optionalString(lookup, "REDIS_ADDR")
+		if addr != "" {
+			addrHost, addrPort, err := net.SplitHostPort(addr)
+			if err != nil {
+				return "", 0, nil, fmt.Errorf("REDIS_ADDR must be in host:port form: %w", err)
+			}
+			port, err := parseInt("REDIS_ADDR port", addrPort)
+			return addrHost, port, nil, err
+		}
+	}
+
+	var missing []string
+	if host == "" {
+		missing = append(missing, "REDIS_HOST")
+	}
+	if !portOK || portValue == "" {
+		missing = append(missing, "REDIS_PORT")
+	}
+	if len(missing) > 0 {
+		return "", 0, missing, nil
+	}
+
+	port, err := parseInt("REDIS_PORT", portValue)
+	return host, port, nil, err
+}
+
+func parseInt(name string, value string) (int, error) {
 	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return 0, fmt.Errorf("%s must be an integer: %w", name, err)

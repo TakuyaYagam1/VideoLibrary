@@ -18,9 +18,12 @@ func TestLoadReadsConfigFromEnvironment(t *testing.T) {
 		"POSTGRES_RETRY_TIMEOUT":   "4s",
 		"POSTGRES_CONNECT_TIMEOUT": "2s",
 		"POSTGRES_MIGRATIONS_PATH": "migrations",
-		"REDIS_ADDR":               "127.0.0.1:6379",
+		"REDIS_HOST":               "127.0.0.1",
+		"REDIS_PORT":               "6379",
 		"REDIS_PASSWORD":           "redis-password",
 		"REDIS_DB":                 "2",
+		"REDIS_POOL_SIZE":          "16",
+		"REDIS_MIN_IDLE_CONNS":     "4",
 		"SEAWEEDFS_PUBLIC_URL":     "http://127.0.0.1:8888",
 		"LOG_LEVEL":                "debug",
 		"LOG_FORMAT":               "json",
@@ -55,14 +58,23 @@ func TestLoadReadsConfigFromEnvironment(t *testing.T) {
 	if cfg.PostgreSQL.MigrationsPath != "migrations" {
 		t.Fatalf("PostgreSQL.MigrationsPath = %q", cfg.PostgreSQL.MigrationsPath)
 	}
-	if cfg.Redis.Addr != "127.0.0.1:6379" {
-		t.Fatalf("Redis.Addr = %q", cfg.Redis.Addr)
+	if cfg.Redis.Host != "127.0.0.1" {
+		t.Fatalf("Redis.Host = %q", cfg.Redis.Host)
+	}
+	if cfg.Redis.Port != 6379 {
+		t.Fatalf("Redis.Port = %d", cfg.Redis.Port)
 	}
 	if cfg.Redis.Password != "redis-password" {
 		t.Fatalf("Redis.Password = %q", cfg.Redis.Password)
 	}
 	if cfg.Redis.DB != 2 {
 		t.Fatalf("Redis.DB = %d", cfg.Redis.DB)
+	}
+	if cfg.Redis.PoolSize != 16 {
+		t.Fatalf("Redis.PoolSize = %d", cfg.Redis.PoolSize)
+	}
+	if cfg.Redis.MinIdleConns != 4 {
+		t.Fatalf("Redis.MinIdleConns = %d", cfg.Redis.MinIdleConns)
 	}
 	if cfg.SeaweedFS.PublicURL != "http://127.0.0.1:8888" {
 		t.Fatalf("SeaweedFS.PublicURL = %q", cfg.SeaweedFS.PublicURL)
@@ -96,7 +108,8 @@ func TestLoadReportsMissingRequiredEnvironment(t *testing.T) {
 		"LOG_FORMAT",
 		"LOG_LEVEL",
 		"POSTGRES_DSN",
-		"REDIS_ADDR",
+		"REDIS_HOST",
+		"REDIS_PORT",
 		"SEAWEEDFS_PUBLIC_URL",
 	}
 	if !reflect.DeepEqual(missing.Names, expected) {
@@ -110,7 +123,8 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		"APP_ENV":              "test",
 		"HTTP_ADDR":            "127.0.0.1:8080",
 		"POSTGRES_DSN":         "postgres://videolibrary:videolibrary@127.0.0.1:5432/videolibrary?sslmode=disable",
-		"REDIS_ADDR":           "127.0.0.1:6379",
+		"REDIS_HOST":           "127.0.0.1",
+		"REDIS_PORT":           "6379",
 		"SEAWEEDFS_PUBLIC_URL": "http://127.0.0.1:8888",
 		"LOG_LEVEL":            "verbose",
 		"LOG_FORMAT":           "json",
@@ -128,7 +142,8 @@ func TestLoadRejectsInvalidPostgresDuration(t *testing.T) {
 		"HTTP_ADDR":              "127.0.0.1:8080",
 		"POSTGRES_DSN":           "postgres://videolibrary:videolibrary@127.0.0.1:5432/videolibrary?sslmode=disable",
 		"POSTGRES_RETRY_TIMEOUT": "soon",
-		"REDIS_ADDR":             "127.0.0.1:6379",
+		"REDIS_HOST":             "127.0.0.1",
+		"REDIS_PORT":             "6379",
 		"SEAWEEDFS_PUBLIC_URL":   "http://127.0.0.1:8888",
 		"LOG_LEVEL":              "debug",
 		"LOG_FORMAT":             "json",
@@ -139,13 +154,38 @@ func TestLoadRejectsInvalidPostgresDuration(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsFileOutputWithoutPath(t *testing.T) {
+func TestLoadSupportsLegacyRedisAddr(t *testing.T) {
 	env := map[string]string{
 		"APP_NAME":             "videolibrary",
 		"APP_ENV":              "test",
 		"HTTP_ADDR":            "127.0.0.1:8080",
 		"POSTGRES_DSN":         "postgres://videolibrary:videolibrary@127.0.0.1:5432/videolibrary?sslmode=disable",
 		"REDIS_ADDR":           "127.0.0.1:6379",
+		"SEAWEEDFS_PUBLIC_URL": "http://127.0.0.1:8888",
+		"LOG_LEVEL":            "debug",
+		"LOG_FORMAT":           "json",
+	}
+
+	cfg, err := LoadFromLookup(mapLookup(env))
+	if err != nil {
+		t.Fatalf("LoadFromLookup() error = %v", err)
+	}
+	if cfg.Redis.Host != "127.0.0.1" {
+		t.Fatalf("Redis.Host = %q", cfg.Redis.Host)
+	}
+	if cfg.Redis.Port != 6379 {
+		t.Fatalf("Redis.Port = %d", cfg.Redis.Port)
+	}
+}
+
+func TestLoadRejectsFileOutputWithoutPath(t *testing.T) {
+	env := map[string]string{
+		"APP_NAME":             "videolibrary",
+		"APP_ENV":              "test",
+		"HTTP_ADDR":            "127.0.0.1:8080",
+		"POSTGRES_DSN":         "postgres://videolibrary:videolibrary@127.0.0.1:5432/videolibrary?sslmode=disable",
+		"REDIS_HOST":           "127.0.0.1",
+		"REDIS_PORT":           "6379",
 		"SEAWEEDFS_PUBLIC_URL": "http://127.0.0.1:8888",
 		"LOG_LEVEL":            "debug",
 		"LOG_FORMAT":           "json",
