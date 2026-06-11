@@ -12,6 +12,7 @@ backend/bin/
 backend/.venv-codegen/
 backend/coverage.out
 backend/coverage.html
+backend/task-per-minute/
 .idea/
 .vscode/
 *.swp

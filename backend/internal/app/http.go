@@ -9,12 +9,6 @@ import (
 	"time"
 
 	"github.com/TakuyaYagam1/VideoLibrary/backend/config"
-	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/httperr"
-	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/restapi"
-	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/openapi"
-	"github.com/go-chi/chi/v5"
-	httpkit "github.com/wahrwelt-kit/go-httpkit/httputil"
-	httpmiddleware "github.com/wahrwelt-kit/go-httpkit/httputil/middleware"
 	logkit "github.com/wahrwelt-kit/go-logkit"
 	"golang.org/x/sync/errgroup"
 )
@@ -36,34 +30,6 @@ func NewHTTPServer(cfg config.HTTP, handler http.Handler, logger logkit.Logger) 
 		shutdownTimeout: cfg.ShutdownTimeout,
 		logger:          logger,
 	}
-}
-
-func NewRouter(
-	video restapi.VideoUsecase,
-	checkers map[string]httpkit.Checker,
-	healthTimeout time.Duration,
-	logger logkit.Logger,
-) http.Handler {
-	router := chi.NewRouter()
-	router.Use(httpmiddleware.RequestID())
-	router.Use(httpmiddleware.Logger(logger, nil))
-
-	handler := restapi.NewHandler(
-		video,
-		restapi.WithHealthCheckers(checkers, healthTimeout),
-	)
-	wrapper := openapi.ServerInterfaceWrapper{
-		Handler:          handler,
-		ErrorHandlerFunc: httperr.WriteOpenAPI,
-	}
-
-	router.Get("/healthz", handler.GetHealthz)
-	router.Route("/api", func(api chi.Router) {
-		api.Get("/videos", wrapper.ListVideos)
-		api.Post("/videos/{id}/view", wrapper.IncrementVideoViews)
-	})
-
-	return router
 }
 
 func (s *HTTPServer) Run(ctx context.Context) error {

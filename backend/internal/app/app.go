@@ -60,7 +60,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	router := NewRouter(
+	router := restapi.NewRouter(
 		videoService,
 		restapi.NewHealthCheckers(
 			pool.Ping,

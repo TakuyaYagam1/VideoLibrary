@@ -1,10 +1,10 @@
-package httperr
+package errmap
 
 import (
 	"errors"
 	"net/http"
 
-	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/httputil"
+	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/restapi/response"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/domain"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/openapi"
 )
@@ -16,7 +16,7 @@ const (
 )
 
 func Write(w http.ResponseWriter, status int, code string, message string) {
-	httputil.WriteJSON(w, status, openapi.ErrorResponse{
+	response.WriteJSON(w, status, openapi.ErrorResponse{
 		Code:    code,
 		Message: message,
 	})

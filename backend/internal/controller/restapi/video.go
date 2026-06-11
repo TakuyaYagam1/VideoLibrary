@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/httperr"
-	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/httputil"
+	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/restapi/errmap"
+	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/restapi/response"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/domain"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/openapi"
 	"github.com/google/uuid"
@@ -50,21 +50,21 @@ func WithHealthCheckers(checkers map[string]httpkit.Checker, timeout time.Durati
 func (h *Handler) ListVideos(w http.ResponseWriter, r *http.Request) {
 	videos, err := h.video.ListVideos(r.Context())
 	if err != nil {
-		httperr.WriteUsecase(w, err)
+		errmap.WriteUsecase(w, err)
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, mapVideos(videos))
+	response.WriteJSON(w, http.StatusOK, mapVideos(videos))
 }
 
 func (h *Handler) IncrementVideoViews(w http.ResponseWriter, r *http.Request, id uuid.UUID) {
 	video, err := h.video.IncrementViews(r.Context(), id)
 	if err != nil {
-		httperr.WriteUsecase(w, err)
+		errmap.WriteUsecase(w, err)
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, openapi.IncrementViewsResponse{
+	response.WriteJSON(w, http.StatusOK, openapi.IncrementViewsResponse{
 		Id:    video.ID,
 		Views: video.Views,
 	})
