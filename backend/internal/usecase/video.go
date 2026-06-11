@@ -8,7 +8,6 @@ import (
 
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/domain"
 	"github.com/google/uuid"
-	"github.com/wahrwelt-kit/go-cachekit"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -27,16 +26,20 @@ type VideoRepository interface {
 	IncrementViewsWithOutbox(ctx context.Context, id uuid.UUID) (domain.Video, error)
 }
 
+type VideoCache interface {
+	GetOrLoadVideos(ctx context.Context, key string, ttl time.Duration, loadFn func(context.Context) ([]domain.Video, error)) ([]domain.Video, error)
+}
+
 // VideoService coordinates video use cases.
 type VideoService struct {
 	repository   VideoRepository
-	cache        *cachekit.Cache
+	cache        VideoCache
 	videoListTTL time.Duration
 	listGroup    singleflight.Group
 }
 
 // NewVideoService creates a video use case service.
-func NewVideoService(repository VideoRepository, cache *cachekit.Cache, videoListTTL time.Duration) (*VideoService, error) {
+func NewVideoService(repository VideoRepository, cache VideoCache, videoListTTL time.Duration) (*VideoService, error) {
 	if repository == nil {
 		return nil, errVideoRepositoryRequired
 	}
@@ -56,7 +59,7 @@ func NewVideoService(repository VideoRepository, cache *cachekit.Cache, videoLis
 
 func (s *VideoService) ListVideos(ctx context.Context) ([]domain.Video, error) {
 	value, err, _ := s.listGroup.Do(VideoListCacheKey, func() (any, error) {
-		return cachekit.GetOrLoad(s.cache, ctx, VideoListCacheKey, s.videoListTTL, func(loadCtx context.Context) ([]domain.Video, error) {
+		return s.cache.GetOrLoadVideos(ctx, VideoListCacheKey, s.videoListTTL, func(loadCtx context.Context) ([]domain.Video, error) {
 			videos, err := s.repository.ListVideos(loadCtx)
 			if err != nil {
 				return nil, fmt.Errorf("load videos: %w", err)

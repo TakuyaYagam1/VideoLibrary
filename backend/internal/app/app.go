@@ -50,7 +50,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 
 	videoService, err := usecase.NewVideoService(
 		persistent.NewVideoRepository(pool),
-		cache,
+		usecase.NewCacheKitVideoCache(cache),
 		cfg.Cache.VideoListTTL,
 	)
 	if err != nil {

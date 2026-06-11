@@ -48,7 +48,7 @@ func TestVideoServiceListVideosReloadsAfterTTL(t *testing.T) {
 			CreatedAt: time.Date(2026, 6, 11, 9, 0, 0, 0, time.UTC),
 		}},
 	}
-	service, err := usecase.NewVideoService(repository, cache, 100*time.Millisecond)
+	service, err := usecase.NewVideoService(repository, usecase.NewCacheKitVideoCache(cache), 100*time.Millisecond)
 	if err != nil {
 		t.Fatalf("NewVideoService() error = %v", err)
 	}

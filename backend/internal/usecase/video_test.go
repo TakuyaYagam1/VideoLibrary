@@ -33,7 +33,7 @@ func TestVideoServiceListVideosUsesCacheAside(t *testing.T) {
 	mock.ExpectSet(VideoListCacheKey, cachedBytes, ttl).SetVal("OK")
 	mock.ExpectGet(VideoListCacheKey).SetVal(string(cachedBytes))
 
-	service, err := NewVideoService(repository, cache, ttl)
+	service, err := NewVideoService(repository, NewCacheKitVideoCache(cache), ttl)
 	if err != nil {
 		t.Fatalf("NewVideoService() error = %v", err)
 	}
@@ -79,7 +79,7 @@ func TestVideoServiceListVideosSingleflightMiss(t *testing.T) {
 		videos:      videos,
 		releaseLoad: releaseLoad,
 	}
-	service, err := NewVideoService(repository, cache, ttl)
+	service, err := NewVideoService(repository, NewCacheKitVideoCache(cache), ttl)
 	if err != nil {
 		t.Fatalf("NewVideoService() error = %v", err)
 	}
@@ -127,7 +127,7 @@ func TestVideoServiceIncrementViewsUsesOutboxRepository(t *testing.T) {
 	repository := &fakeVideoRepository{
 		incrementedVideo: want,
 	}
-	service, err := NewVideoService(repository, cache, time.Minute)
+	service, err := NewVideoService(repository, NewCacheKitVideoCache(cache), time.Minute)
 	if err != nil {
 		t.Fatalf("NewVideoService() error = %v", err)
 	}
@@ -159,7 +159,7 @@ func TestVideoServiceIncrementViewsPreservesNotFound(t *testing.T) {
 	repository := &fakeVideoRepository{
 		incrementError: domain.ErrVideoNotFound,
 	}
-	service, err := NewVideoService(repository, cache, time.Minute)
+	service, err := NewVideoService(repository, NewCacheKitVideoCache(cache), time.Minute)
 	if err != nil {
 		t.Fatalf("NewVideoService() error = %v", err)
 	}
