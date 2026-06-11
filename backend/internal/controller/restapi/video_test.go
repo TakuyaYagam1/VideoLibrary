@@ -13,6 +13,7 @@ import (
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/domain"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/openapi"
 	"github.com/google/uuid"
+	httpkit "github.com/wahrwelt-kit/go-httpkit/httputil"
 )
 
 func TestHandlerListVideos(t *testing.T) {
@@ -99,6 +100,94 @@ func TestHandlerListVideosInternalError(t *testing.T) {
 	assertErrorResponse(t, recorder, http.StatusInternalServerError, httperr.CodeInternal)
 }
 
+func TestHandlerGetHealthzOK(t *testing.T) {
+	handler := openapi.Handler(NewHandler(&fakeVideoUsecase{}, WithHealthCheckers(NewHealthCheckers(
+		func(context.Context) error { return nil },
+		func(context.Context) error { return nil },
+	), time.Second)))
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+
+	handler.ServeHTTP(recorder, request)
+
+	assertHealthResponse(t, recorder, http.StatusOK, openapi.Ok)
+}
+
+func TestHandlerGetHealthzDegraded(t *testing.T) {
+	handler := openapi.Handler(NewHandler(&fakeVideoUsecase{}, WithHealthCheckers(NewHealthCheckers(
+		func(context.Context) error { return nil },
+		func(context.Context) error { return errors.New("redis unavailable") },
+	), time.Second)))
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+
+	handler.ServeHTTP(recorder, request)
+
+	assertHealthResponse(t, recorder, http.StatusServiceUnavailable, openapi.Degraded)
+}
+
+func TestHandlerGetHealthzUsesTimeout(t *testing.T) {
+	const timeout = 25 * time.Millisecond
+	var deadline time.Time
+	handler := openapi.Handler(NewHandler(&fakeVideoUsecase{}, WithHealthCheckers(map[string]httpkit.Checker{
+		"db": checkerFunc(func(ctx context.Context) error {
+			var ok bool
+			deadline, ok = ctx.Deadline()
+			if !ok {
+				return errors.New("missing deadline")
+			}
+
+			return nil
+		}),
+	}, timeout)))
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	startedAt := time.Now()
+
+	handler.ServeHTTP(recorder, request)
+
+	assertHealthResponse(t, recorder, http.StatusOK, openapi.Ok)
+	if deadline.Before(startedAt) || deadline.After(startedAt.Add(timeout+25*time.Millisecond)) {
+		t.Fatalf("deadline = %s, want within configured timeout from %s", deadline, startedAt)
+	}
+}
+
+func TestHandlerGetHealthzRunsChecksInParallel(t *testing.T) {
+	started := make(chan string, 2)
+	release := make(chan struct{})
+	handler := openapi.Handler(NewHandler(&fakeVideoUsecase{}, WithHealthCheckers(map[string]httpkit.Checker{
+		"db": checkerFunc(func(context.Context) error {
+			started <- "db"
+			<-release
+			return nil
+		}),
+		"redis": checkerFunc(func(context.Context) error {
+			started <- "redis"
+			<-release
+			return nil
+		}),
+	}, time.Second)))
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		handler.ServeHTTP(recorder, request)
+	}()
+
+	waitForStartedChecks(t, started, 2)
+	close(release)
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("health handler did not finish")
+	}
+
+	assertHealthResponse(t, recorder, http.StatusOK, openapi.Ok)
+}
+
 type fakeVideoUsecase struct {
 	videos           []domain.Video
 	incrementedVideo domain.Video
@@ -149,5 +238,48 @@ func assertErrorResponse(t *testing.T, recorder *httptest.ResponseRecorder, stat
 	}
 	if got.Message == "" {
 		t.Fatal("error message is empty")
+	}
+}
+
+func assertHealthResponse(t *testing.T, recorder *httptest.ResponseRecorder, status int, want openapi.HealthResponseStatus) {
+	t.Helper()
+
+	if recorder.Code != status {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, status, recorder.Body.String())
+	}
+	body := recorder.Body.Bytes()
+	var got openapi.HealthResponse
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if got.Status != want {
+		t.Fatalf("health status = %q, want %q", got.Status, want)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if _, ok := raw["checks"]; ok {
+		t.Fatal("health response includes check details")
+	}
+}
+
+type checkerFunc func(context.Context) error
+
+func (f checkerFunc) Check(ctx context.Context) error {
+	return f(ctx)
+}
+
+func waitForStartedChecks(t *testing.T, started <-chan string, want int) {
+	t.Helper()
+
+	seen := make(map[string]struct{}, want)
+	for len(seen) < want {
+		select {
+		case name := <-started:
+			seen[name] = struct{}{}
+		case <-time.After(time.Second):
+			t.Fatalf("started checks = %d, want %d", len(seen), want)
+		}
 	}
 }

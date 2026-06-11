@@ -17,6 +17,7 @@ type Config struct {
 	PostgreSQL PostgreSQL
 	Redis      Redis
 	Cache      Cache
+	Health     Health
 	SeaweedFS  SeaweedFS
 	Log        Log
 }
@@ -50,6 +51,10 @@ type Redis struct {
 
 type Cache struct {
 	VideoListTTL time.Duration
+}
+
+type Health struct {
+	CheckTimeout time.Duration
 }
 
 type SeaweedFS struct {
@@ -126,6 +131,10 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	healthCheckTimeout, err := optionalDuration(lookup, "HEALTH_CHECK_TIMEOUT", 2*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
 	postgresMaxConns, err := optionalInt(lookup, "POSTGRES_MAX_CONNS", 0)
 	if err != nil {
 		return Config{}, err
@@ -170,6 +179,9 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		Cache: Cache{
 			VideoListTTL: cacheVideoListTTL,
 		},
+		Health: Health{
+			CheckTimeout: healthCheckTimeout,
+		},
 		SeaweedFS: SeaweedFS{
 			PublicURL: values["SEAWEEDFS_PUBLIC_URL"],
 		},
@@ -211,6 +223,9 @@ func (c Config) Validate() error {
 	}
 	if c.Cache.VideoListTTL <= 0 {
 		return fmt.Errorf("CACHE_VIDEO_LIST_TTL must be greater than 0")
+	}
+	if c.Health.CheckTimeout <= 0 {
+		return fmt.Errorf("HEALTH_CHECK_TIMEOUT must be greater than 0")
 	}
 
 	if err := validateHTTPURL("SEAWEEDFS_PUBLIC_URL", c.SeaweedFS.PublicURL); err != nil {

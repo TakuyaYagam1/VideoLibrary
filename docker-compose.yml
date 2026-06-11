@@ -16,6 +16,7 @@ services:
       REDIS_POOL_SIZE: "50"
       REDIS_MIN_IDLE_CONNS: "10"
       CACHE_VIDEO_LIST_TTL: 5m
+      HEALTH_CHECK_TIMEOUT: 2s
       SEAWEEDFS_PUBLIC_URL: http://seaweedfs:8888
       LOG_LEVEL: info
       LOG_FORMAT: json

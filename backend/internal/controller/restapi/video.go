@@ -3,12 +3,14 @@ package restapi
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/httperr"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/httputil"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/domain"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/openapi"
 	"github.com/google/uuid"
+	httpkit "github.com/wahrwelt-kit/go-httpkit/httputil"
 )
 
 type VideoUsecase interface {
@@ -16,17 +18,32 @@ type VideoUsecase interface {
 	IncrementViews(ctx context.Context, id uuid.UUID) (domain.Video, error)
 }
 
+type HandlerOption func(*Handler)
+
 type Handler struct {
 	openapi.Unimplemented
 
-	video VideoUsecase
+	video  VideoUsecase
+	health http.HandlerFunc
 }
 
 var _ openapi.ServerInterface = (*Handler)(nil)
 
-func NewHandler(video VideoUsecase) *Handler {
-	return &Handler{
+func NewHandler(video VideoUsecase, opts ...HandlerOption) *Handler {
+	handler := &Handler{
 		video: video,
+	}
+	handler.health = httpkit.HealthHandler(nil, httpkit.HealthHideDetails())
+	for _, opt := range opts {
+		opt(handler)
+	}
+
+	return handler
+}
+
+func WithHealthCheckers(checkers map[string]httpkit.Checker, timeout time.Duration) HandlerOption {
+	return func(h *Handler) {
+		h.health = httpkit.HealthHandler(checkers, httpkit.HealthTimeout(timeout), httpkit.HealthHideDetails())
 	}
 }
 
@@ -51,6 +68,10 @@ func (h *Handler) IncrementVideoViews(w http.ResponseWriter, r *http.Request, id
 		Id:    video.ID,
 		Views: video.Views,
 	})
+}
+
+func (h *Handler) GetHealthz(w http.ResponseWriter, r *http.Request) {
+	h.health(w, r)
 }
 
 func mapVideos(videos []domain.Video) []openapi.Video {
