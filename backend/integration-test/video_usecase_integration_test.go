@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TakuyaYagam1/VideoLibrary/backend/config"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/domain"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/usecase"
 	redisconnector "github.com/TakuyaYagam1/VideoLibrary/backend/pkg/redis"
@@ -17,10 +16,10 @@ import (
 )
 
 func TestVideoServiceListVideosReloadsAfterTTL(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	client, cache, err := newIntegrationRedisCache(ctx)
+	client, cache, err := newIntegrationRedisCache(t, ctx)
 	if err != nil {
 		t.Fatalf("newIntegrationRedisCache() error = %v", err)
 	}
@@ -109,14 +108,10 @@ func (r *fakeVideoRepository) IncrementViewsWithOutbox(context.Context, uuid.UUI
 	return domain.Video{}, nil
 }
 
-func newIntegrationRedisCache(ctx context.Context) (interface{ Close() error }, *cachekit.Cache, error) {
-	client, cache, err := redisconnector.NewCache(ctx, config.Redis{
-		Host:         "localhost",
-		Port:         6379,
-		DB:           0,
-		PoolSize:     4,
-		MinIdleConns: 1,
-	})
+func newIntegrationRedisCache(t *testing.T, ctx context.Context) (interface{ Close() error }, *cachekit.Cache, error) {
+	t.Helper()
+
+	client, cache, err := redisconnector.NewCache(ctx, startRedisContainer(t, ctx))
 	if err != nil {
 		return nil, nil, err
 	}

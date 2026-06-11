@@ -5,12 +5,10 @@ package integration_test
 import (
 	"context"
 	"errors"
-	"os"
 	"slices"
 	"testing"
 	"time"
 
-	"github.com/TakuyaYagam1/VideoLibrary/backend/config"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/domain"
 	repopostgres "github.com/TakuyaYagam1/VideoLibrary/backend/internal/repo/persistent"
 	pgconnector "github.com/TakuyaYagam1/VideoLibrary/backend/pkg/postgres"
@@ -18,22 +16,10 @@ import (
 )
 
 func TestVideoRepositoryIntegration(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	dsn := os.Getenv("POSTGRES_DSN")
-	if dsn == "" {
-		dsn = "postgres://videolibrary:videolibrary@localhost:5432/videolibrary?sslmode=disable"
-	}
-
-	cfg := config.PostgreSQL{
-		DSN:            dsn,
-		MaxConns:       4,
-		MinConns:       1,
-		RetryTimeout:   time.Second,
-		ConnectTimeout: 5 * time.Second,
-		MigrationsPath: "../migrations",
-	}
+	cfg := startPostgresContainer(t, ctx)
 	if err := pgconnector.RunMigrations(ctx, cfg); err != nil {
 		t.Fatalf("Run migrations error = %v", err)
 	}

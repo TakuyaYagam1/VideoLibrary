@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TakuyaYagam1/VideoLibrary/backend/config"
 	redisconnector "github.com/TakuyaYagam1/VideoLibrary/backend/pkg/redis"
 	"github.com/google/uuid"
 	"github.com/wahrwelt-kit/go-cachekit"
@@ -20,16 +19,10 @@ type redisCacheProbe struct {
 }
 
 func TestRedisCacheIntegration(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	client, cache, err := redisconnector.NewCache(ctx, config.Redis{
-		Host:         "localhost",
-		Port:         6379,
-		DB:           0,
-		PoolSize:     4,
-		MinIdleConns: 1,
-	})
+	client, cache, err := redisconnector.NewCache(ctx, startRedisContainer(t, ctx))
 	if err != nil {
 		t.Fatalf("NewCache() error = %v", err)
 	}
