@@ -141,7 +141,7 @@ oapi-codegen: openapi-bundle ## Generate OpenAPI Go types, chi server, embedded 
 openapi: validate-openapi oapi-codegen ## Validate the OpenAPI spec and generate Go artifacts.
 
 sqlc: ## Generate SQLC code when SQL query files exist.
-	@if find internal -path '*/query.sql' -o -path '*/queries.sql' -o -path '*/queries/*.sql' | grep -q .; then \
+	@if { find query -name '*.sql' 2>/dev/null; find internal -path '*/query.sql' -o -path '*/queries.sql' -o -path '*/queries/*.sql'; } | grep -q .; then \
 		$(SQLC) generate -f codegen/sqlc.yaml; \
 	else \
 		echo "sqlc: no query files found, skipping"; \
