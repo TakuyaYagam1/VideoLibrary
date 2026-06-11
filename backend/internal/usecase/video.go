@@ -9,6 +9,6 @@ import (
 
 type VideoRepository interface {
 	ListVideos(ctx context.Context) ([]domain.Video, error)
-	GetVideo(ctx context.Context, id uuid.UUID) (domain.Video, error)
+	GetByID(ctx context.Context, id uuid.UUID) (domain.Video, error)
 	IncrementViews(ctx context.Context, id uuid.UUID) (domain.Video, error)
 }
