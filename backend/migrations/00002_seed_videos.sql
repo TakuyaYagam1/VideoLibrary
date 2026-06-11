@@ -3,33 +3,35 @@ INSERT INTO videos (id, title, file_path, views, created_at)
 VALUES
     (
         '01978a7a-8a40-7a0d-9b2f-6f0c1e5f1001',
-        'Вводный курс по безопасности',
-        'http://localhost:8888/videos/security-onboarding.mp4',
+        'Planet 1.5 MB',
+        'http://localhost:8888/videos/planet_1.5mb.mp4',
         0,
         now()
     ),
     (
         '01978a7a-8a40-7a0d-9b2f-6f0c1e5f1002',
-        'Регламент работы с клиентскими данными',
-        'http://localhost:8888/videos/customer-data-policy.mp4',
+        'Planet 3 MB',
+        'http://localhost:8888/videos/planet_3mb.mp4',
         0,
         now()
     ),
     (
         '01978a7a-8a40-7a0d-9b2f-6f0c1e5f1003',
-        'Запись ежемесячного собрания',
-        'http://localhost:8888/videos/monthly-meeting.mp4',
+        'Planet 10 MB',
+        'http://localhost:8888/videos/planet_10mb.mp4',
         0,
         now()
     ),
     (
         '01978a7a-8a40-7a0d-9b2f-6f0c1e5f1004',
-        'Инструкция по внутренним инструментам',
-        'http://localhost:8888/videos/internal-tools-guide.mp4',
+        'Planet 18 MB',
+        'http://localhost:8888/videos/planet_18mb.mp4',
         0,
         now()
     )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE
+SET title = EXCLUDED.title,
+    file_path = EXCLUDED.file_path;
 
 -- +goose Down
 DELETE FROM videos

@@ -2,7 +2,7 @@
 .PHONY: compose-up compose-down compose-logs compose-ps
 .PHONY: install-tools install-tools-latest install-go-tools install-codegen-python-deps
 .PHONY: merge-schemas openapi-bundle oapi-codegen validate-openapi openapi sqlc mockery generate
-.PHONY: migrate-up migrate-down migrate-status migrate-create
+.PHONY: migrate-up migrate-down migrate-status migrate-create seed-assets
 .PHONY: build run clean
 .PHONY: test test-race tese-race test-unit test-integration test-e2e
 .PHONY: lint lint-fix deps-audit fmt mod-tidy
@@ -25,6 +25,9 @@ GO_PROD_PACKAGES := ./cmd/... ./config/... ./internal/... ./pkg/...
 GO_FILES := $(shell find . -type f -name '*.go' -not -path './bin/*')
 POSTGRES_DSN ?= postgres://videolibrary:videolibrary@localhost:5432/videolibrary?sslmode=disable
 BASE_STACK := docker compose -f ../docker-compose.yml --env-file $(ENV_FILE)
+ASSETS_DIR ?= ../assets
+SEAWEEDFS_FILER_URL ?= $(SEAWEEDFS_PUBLIC_URL)
+SEAWEEDFS_VIDEO_PREFIX ?= videos
 
 GO_BIN_DIR ?= $(CURDIR)/bin
 GOCACHE ?= $(GO_BIN_DIR)/.cache/go-build
@@ -170,6 +173,9 @@ migrate-status: ## Show database migration status.
 migrate-create: ## Create a migration: make migrate-create name=create_videos_table.
 	@test -n "$(name)" || (echo "name is required" && exit 1)
 	$(GOOSE) -dir migrations create "$(name)" sql
+
+seed-assets: migrate-up ## Apply migrations and upload local video assets to the SeaweedFS filer.
+	ASSETS_DIR="$(ASSETS_DIR)" SEAWEEDFS_FILER_URL="$(SEAWEEDFS_FILER_URL)" SEAWEEDFS_VIDEO_PREFIX="$(SEAWEEDFS_VIDEO_PREFIX)" bash script/seed-seaweedfs-assets.sh
 
 ##@ Build
 build: ## Build the application binary.

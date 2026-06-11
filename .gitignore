@@ -1,8 +1,11 @@
 .cursor
+.agents
+.codex
 PRD.md
 tasks.json
 progress.md
 progress.txt
+ralph.sh
 .env
 .env.local
 backend/bin/

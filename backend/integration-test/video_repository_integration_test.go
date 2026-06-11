@@ -61,6 +61,48 @@ VALUES ($1, $2, $3, $4, now())
 		t.Fatalf("ListVideos() does not contain inserted video id %s", videoID)
 	}
 
+	seedVideos := map[string]struct {
+		title    string
+		filePath string
+	}{
+		"01978a7a-8a40-7a0d-9b2f-6f0c1e5f1001": {
+			title:    "Planet 1.5 MB",
+			filePath: "http://localhost:8888/videos/planet_1.5mb.mp4",
+		},
+		"01978a7a-8a40-7a0d-9b2f-6f0c1e5f1002": {
+			title:    "Planet 3 MB",
+			filePath: "http://localhost:8888/videos/planet_3mb.mp4",
+		},
+		"01978a7a-8a40-7a0d-9b2f-6f0c1e5f1003": {
+			title:    "Planet 10 MB",
+			filePath: "http://localhost:8888/videos/planet_10mb.mp4",
+		},
+		"01978a7a-8a40-7a0d-9b2f-6f0c1e5f1004": {
+			title:    "Planet 18 MB",
+			filePath: "http://localhost:8888/videos/planet_18mb.mp4",
+		},
+	}
+	for _, video := range videos {
+		want, ok := seedVideos[video.ID.String()]
+		if !ok {
+			continue
+		}
+		if video.Title != want.title || video.FilePath != want.filePath {
+			t.Fatalf(
+				"seed video %s = (%q, %q), want (%q, %q)",
+				video.ID,
+				video.Title,
+				video.FilePath,
+				want.title,
+				want.filePath,
+			)
+		}
+		delete(seedVideos, video.ID.String())
+	}
+	if len(seedVideos) != 0 {
+		t.Fatalf("missing seed videos: %v", seedVideos)
+	}
+
 	video, err := repository.GetByID(ctx, videoID)
 	if err != nil {
 		t.Fatalf("GetByID() error = %v", err)
