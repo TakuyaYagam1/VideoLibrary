@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TakuyaYagam1/VideoLibrary/backend/config"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/domain"
 	repopostgres "github.com/TakuyaYagam1/VideoLibrary/backend/internal/repo/persistent"
+	pgconnector "github.com/TakuyaYagam1/VideoLibrary/backend/pkg/postgres"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
-	pgkitgoose "github.com/wahrwelt-kit/go-pgkit/migrator/goose"
 )
 
 func TestVideoRepositoryIntegration(t *testing.T) {
@@ -26,13 +26,21 @@ func TestVideoRepositoryIntegration(t *testing.T) {
 		dsn = "postgres://videolibrary:videolibrary@localhost:5432/videolibrary?sslmode=disable"
 	}
 
-	if err := pgkitgoose.Run(ctx, dsn, "../../migrations"); err != nil {
+	cfg := config.PostgreSQL{
+		DSN:            dsn,
+		MaxConns:       4,
+		MinConns:       1,
+		RetryTimeout:   time.Second,
+		ConnectTimeout: 5 * time.Second,
+		MigrationsPath: "../migrations",
+	}
+	if err := pgconnector.RunMigrations(ctx, cfg); err != nil {
 		t.Fatalf("Run migrations error = %v", err)
 	}
 
-	pool, err := pgxpool.New(ctx, dsn)
+	pool, err := pgconnector.NewPool(ctx, cfg)
 	if err != nil {
-		t.Fatalf("pgxpool.New() error = %v", err)
+		t.Fatalf("NewPool() error = %v", err)
 	}
 	t.Cleanup(pool.Close)
 

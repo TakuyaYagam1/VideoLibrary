@@ -16,6 +16,7 @@ type Config struct {
 	HTTP       HTTP
 	PostgreSQL PostgreSQL
 	Redis      Redis
+	Cache      Cache
 	SeaweedFS  SeaweedFS
 	Log        Log
 }
@@ -45,6 +46,10 @@ type Redis struct {
 	DB           int
 	PoolSize     int
 	MinIdleConns int
+}
+
+type Cache struct {
+	VideoListTTL time.Duration
 }
 
 type SeaweedFS struct {
@@ -117,6 +122,10 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	cacheVideoListTTL, err := optionalDuration(lookup, "CACHE_VIDEO_LIST_TTL", 5*time.Minute)
+	if err != nil {
+		return Config{}, err
+	}
 	postgresMaxConns, err := optionalInt(lookup, "POSTGRES_MAX_CONNS", 0)
 	if err != nil {
 		return Config{}, err
@@ -158,6 +167,9 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 			PoolSize:     redisPoolSize,
 			MinIdleConns: redisMinIdleConns,
 		},
+		Cache: Cache{
+			VideoListTTL: cacheVideoListTTL,
+		},
 		SeaweedFS: SeaweedFS{
 			PublicURL: values["SEAWEEDFS_PUBLIC_URL"],
 		},
@@ -196,6 +208,9 @@ func (c Config) Validate() error {
 	}
 	if c.Redis.PoolSize > 0 && c.Redis.MinIdleConns > c.Redis.PoolSize {
 		return fmt.Errorf("REDIS_MIN_IDLE_CONNS must be less than or equal to REDIS_POOL_SIZE")
+	}
+	if c.Cache.VideoListTTL <= 0 {
+		return fmt.Errorf("CACHE_VIDEO_LIST_TTL must be greater than 0")
 	}
 
 	if err := validateHTTPURL("SEAWEEDFS_PUBLIC_URL", c.SeaweedFS.PublicURL); err != nil {

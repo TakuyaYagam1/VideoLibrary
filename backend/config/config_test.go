@@ -24,6 +24,7 @@ func TestLoadReadsConfigFromEnvironment(t *testing.T) {
 		"REDIS_DB":                 "2",
 		"REDIS_POOL_SIZE":          "16",
 		"REDIS_MIN_IDLE_CONNS":     "4",
+		"CACHE_VIDEO_LIST_TTL":     "2m",
 		"SEAWEEDFS_PUBLIC_URL":     "http://127.0.0.1:8888",
 		"LOG_LEVEL":                "debug",
 		"LOG_FORMAT":               "json",
@@ -75,6 +76,9 @@ func TestLoadReadsConfigFromEnvironment(t *testing.T) {
 	}
 	if cfg.Redis.MinIdleConns != 4 {
 		t.Fatalf("Redis.MinIdleConns = %d", cfg.Redis.MinIdleConns)
+	}
+	if cfg.Cache.VideoListTTL != 2*time.Minute {
+		t.Fatalf("Cache.VideoListTTL = %s", cfg.Cache.VideoListTTL)
 	}
 	if cfg.SeaweedFS.PublicURL != "http://127.0.0.1:8888" {
 		t.Fatalf("SeaweedFS.PublicURL = %q", cfg.SeaweedFS.PublicURL)

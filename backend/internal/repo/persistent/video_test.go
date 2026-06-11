@@ -1,4 +1,4 @@
-package integration_test
+package persistent_test
 
 import (
 	"testing"

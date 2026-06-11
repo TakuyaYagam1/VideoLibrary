@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/getkin/kin-openapi v0.140.0
 	github.com/go-chi/chi/v5 v5.3.0
+	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.1
 	github.com/oapi-codegen/runtime v1.4.1
@@ -12,6 +13,7 @@ require (
 	github.com/wahrwelt-kit/go-cachekit v0.5.0
 	github.com/wahrwelt-kit/go-logkit v0.5.0
 	github.com/wahrwelt-kit/go-pgkit v1.3.1
+	golang.org/x/sync v0.21.0
 )
 
 require (
@@ -38,7 +40,6 @@ require (
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect

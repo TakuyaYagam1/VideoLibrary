@@ -1,6 +1,6 @@
 //go:build integration
 
-package app
+package integration_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/TakuyaYagam1/VideoLibrary/backend/config"
+	redisconnector "github.com/TakuyaYagam1/VideoLibrary/backend/pkg/redis"
 	"github.com/google/uuid"
 	"github.com/wahrwelt-kit/go-cachekit"
 )
@@ -22,7 +23,7 @@ func TestRedisCacheIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, cache, err := NewRedisCache(ctx, config.Redis{
+	client, cache, err := redisconnector.NewCache(ctx, config.Redis{
 		Host:         "localhost",
 		Port:         6379,
 		DB:           0,
@@ -30,7 +31,7 @@ func TestRedisCacheIntegration(t *testing.T) {
 		MinIdleConns: 1,
 	})
 	if err != nil {
-		t.Fatalf("NewRedisCache() error = %v", err)
+		t.Fatalf("NewCache() error = %v", err)
 	}
 	t.Cleanup(func() {
 		if err := client.Close(); err != nil {

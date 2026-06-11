@@ -1,4 +1,4 @@
-package app
+package redis
 
 import (
 	"context"
@@ -9,13 +9,13 @@ import (
 	"github.com/wahrwelt-kit/go-cachekit"
 )
 
-func TestNewRedisCacheRejectsInvalidConfig(t *testing.T) {
-	_, _, err := NewRedisCache(context.Background(), config.Redis{
+func TestNewCacheRejectsInvalidConfig(t *testing.T) {
+	_, _, err := NewCache(context.Background(), config.Redis{
 		Host: "127.0.0.1",
 		Port: 0,
 	})
 
 	if !errors.Is(err, cachekit.ErrRedisInvalidPort) {
-		t.Fatalf("NewRedisCache() error = %v, want ErrRedisInvalidPort", err)
+		t.Fatalf("NewCache() error = %v, want ErrRedisInvalidPort", err)
 	}
 }

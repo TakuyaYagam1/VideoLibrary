@@ -1,4 +1,4 @@
-package app
+package postgres
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	pgkitpostgres "github.com/wahrwelt-kit/go-pgkit/postgres"
 )
 
-func NewPostgresPool(ctx context.Context, cfg config.PostgreSQL) (*pgxpool.Pool, error) {
+func NewPool(ctx context.Context, cfg config.PostgreSQL) (*pgxpool.Pool, error) {
 	return pgkitpostgres.New(ctx, &pgkitpostgres.Config{
 		URL:            cfg.DSN,
 		MaxConns:       cfg.MaxConns,
