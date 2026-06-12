@@ -4,28 +4,28 @@ VALUES
     (
         '01978a7a-8a40-7a0d-9b2f-6f0c1e5f1001',
         'Planet 1.5 MB',
-        'http://localhost:8888/videos/planet_1.5mb.mp4',
+        '/videos/planet_1.5mb.mp4',
         0,
         now()
     ),
     (
         '01978a7a-8a40-7a0d-9b2f-6f0c1e5f1002',
         'Planet 3 MB',
-        'http://localhost:8888/videos/planet_3mb.mp4',
+        '/videos/planet_3mb.mp4',
         0,
         now()
     ),
     (
         '01978a7a-8a40-7a0d-9b2f-6f0c1e5f1003',
         'Planet 10 MB',
-        'http://localhost:8888/videos/planet_10mb.mp4',
+        '/videos/planet_10mb.mp4',
         0,
         now()
     ),
     (
         '01978a7a-8a40-7a0d-9b2f-6f0c1e5f1004',
         'Planet 18 MB',
-        'http://localhost:8888/videos/planet_18mb.mp4',
+        '/videos/planet_18mb.mp4',
         0,
         now()
     )

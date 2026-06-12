@@ -17,6 +17,9 @@ type ServerInterface interface {
 	// List videos
 	// (GET /api/videos)
 	ListVideos(w http.ResponseWriter, r *http.Request)
+	// Get video
+	// (GET /api/videos/{id})
+	GetVideo(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Increment video views
 	// (POST /api/videos/{id}/view)
 	IncrementVideoViews(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -32,6 +35,12 @@ type Unimplemented struct{}
 // List videos
 // (GET /api/videos)
 func (_ Unimplemented) ListVideos(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get video
+// (GET /api/videos/{id})
+func (_ Unimplemented) GetVideo(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -61,6 +70,31 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListVideos(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVideo operation middleware
+func (siw *ServerInterfaceWrapper) GetVideo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVideo(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -224,6 +258,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/videos", wrapper.ListVideos)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/videos/{id}/view", wrapper.IncrementVideoViews)

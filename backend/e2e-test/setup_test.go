@@ -36,8 +36,8 @@ func startPostgresContainer(t *testing.T, ctx context.Context) config.PostgreSQL
 		t.Fatalf("start postgres container: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := testcontainers.TerminateContainer(container); err != nil {
-			t.Fatalf("terminate postgres container: %v", err)
+		if terminateErr := testcontainers.TerminateContainer(container); terminateErr != nil {
+			t.Fatalf("terminate postgres container: %v", terminateErr)
 		}
 	})
 
@@ -64,8 +64,8 @@ func startRedisContainer(t *testing.T, ctx context.Context) config.Redis {
 		t.Fatalf("start redis container: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := testcontainers.TerminateContainer(container); err != nil {
-			t.Fatalf("terminate redis container: %v", err)
+		if terminateErr := testcontainers.TerminateContainer(container); terminateErr != nil {
+			t.Fatalf("terminate redis container: %v", terminateErr)
 		}
 	})
 

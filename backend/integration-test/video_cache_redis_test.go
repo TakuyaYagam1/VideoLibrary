@@ -27,8 +27,8 @@ func TestRedisCacheIntegration(t *testing.T) {
 		t.Fatalf("NewCache() error = %v", err)
 	}
 	t.Cleanup(func() {
-		if err := client.Close(); err != nil {
-			t.Fatalf("Close() error = %v", err)
+		if closeErr := client.Close(); closeErr != nil {
+			t.Fatalf("Close() error = %v", closeErr)
 		}
 	})
 
@@ -36,14 +36,14 @@ func TestRedisCacheIntegration(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cleanupCancel()
-		if err := cache.Del(cleanupCtx, key); err != nil {
-			t.Fatalf("cache.Del() cleanup error = %v", err)
+		if delErr := cache.Del(cleanupCtx, key); delErr != nil {
+			t.Fatalf("cache.Del() cleanup error = %v", delErr)
 		}
 	})
 
 	want := redisCacheProbe{Message: "ok", Count: 2}
-	if err := cache.Set(ctx, key, want, time.Minute); err != nil {
-		t.Fatalf("cache.Set() error = %v", err)
+	if setErr := cache.Set(ctx, key, want, time.Minute); setErr != nil {
+		t.Fatalf("cache.Set() error = %v", setErr)
 	}
 
 	loadCalled := false

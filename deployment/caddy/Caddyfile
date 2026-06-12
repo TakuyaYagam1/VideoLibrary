@@ -1,0 +1,42 @@
+{
+	email {$ACME_EMAIL}
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	}
+}
+
+{$FRONTEND_DOMAIN} {
+	encode zstd gzip
+	import security_headers
+	respond "frontend is not configured" 503
+}
+
+{$BACKEND_DOMAIN} {
+	encode zstd gzip
+	import security_headers
+	reverse_proxy app:{$BACKEND_PORT}
+}
+
+{$SEAWEEDFS_FILES_DOMAIN} {
+	encode zstd gzip
+	import security_headers
+	@blocked_methods {
+		not method GET HEAD OPTIONS
+	}
+	respond @blocked_methods "method not allowed" 405
+	reverse_proxy seaweedfs:{$SEAWEEDFS_PORT}
+}
+
+{$SEAWEEDFS_ADMIN_DOMAIN} {
+	encode zstd gzip
+	import security_headers
+	basic_auth {
+		{$SEAWEEDFS_ADMIN_BASIC_AUTH_USER} {$SEAWEEDFS_ADMIN_BASIC_AUTH_HASH}
+	}
+	reverse_proxy seaweedfs-admin:{$SEAWEEDFS_ADMIN_PORT}
+}

@@ -35,7 +35,7 @@ func (q *Queries) GetVideoByID(ctx context.Context, id pgtype.UUID) (Video, erro
 	return i, err
 }
 
-const incrementViewsWithOutbox = `-- name: IncrementViewsWithOutbox :one
+const incrementViews = `-- name: IncrementViews :one
 WITH updated_video AS (
     UPDATE videos
     SET views = videos.views + 1
@@ -63,14 +63,14 @@ FROM updated_video
 JOIN inserted_event ON true
 `
 
-type IncrementViewsWithOutboxParams struct {
+type IncrementViewsParams struct {
 	VideoID       pgtype.UUID `json:"video_id"`
 	OutboxEventID pgtype.UUID `json:"outbox_event_id"`
 }
 
-func (q *Queries) IncrementViewsWithOutbox(ctx context.Context, arg IncrementViewsWithOutboxParams) (int32, error) {
-	row := q.db.QueryRow(ctx, incrementViewsWithOutbox, arg.VideoID, arg.OutboxEventID)
-	var views int32
+func (q *Queries) IncrementViews(ctx context.Context, arg IncrementViewsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, incrementViews, arg.VideoID, arg.OutboxEventID)
+	var views int64
 	err := row.Scan(&views)
 	return views, err
 }

@@ -105,12 +105,12 @@ func (_c *MockVideoRepository_GetByID_Call) RunAndReturn(run func(ctx context.Co
 	return _c
 }
 
-// IncrementViewsWithOutbox provides a mock function for the type MockVideoRepository
-func (_mock *MockVideoRepository) IncrementViewsWithOutbox(ctx context.Context, id uuid.UUID) (domain.Video, error) {
+// IncrementViews provides a mock function for the type MockVideoRepository
+func (_mock *MockVideoRepository) IncrementViews(ctx context.Context, id uuid.UUID) (domain.Video, error) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
-		panic("no return value specified for IncrementViewsWithOutbox")
+		panic("no return value specified for IncrementViews")
 	}
 
 	var r0 domain.Video
@@ -131,19 +131,19 @@ func (_mock *MockVideoRepository) IncrementViewsWithOutbox(ctx context.Context, 
 	return r0, r1
 }
 
-// MockVideoRepository_IncrementViewsWithOutbox_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IncrementViewsWithOutbox'
-type MockVideoRepository_IncrementViewsWithOutbox_Call struct {
+// MockVideoRepository_IncrementViews_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IncrementViews'
+type MockVideoRepository_IncrementViews_Call struct {
 	*mock.Call
 }
 
-// IncrementViewsWithOutbox is a helper method to define mock.On call
+// IncrementViews is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id uuid.UUID
-func (_e *MockVideoRepository_Expecter) IncrementViewsWithOutbox(ctx interface{}, id interface{}) *MockVideoRepository_IncrementViewsWithOutbox_Call {
-	return &MockVideoRepository_IncrementViewsWithOutbox_Call{Call: _e.mock.On("IncrementViewsWithOutbox", ctx, id)}
+func (_e *MockVideoRepository_Expecter) IncrementViews(ctx interface{}, id interface{}) *MockVideoRepository_IncrementViews_Call {
+	return &MockVideoRepository_IncrementViews_Call{Call: _e.mock.On("IncrementViews", ctx, id)}
 }
 
-func (_c *MockVideoRepository_IncrementViewsWithOutbox_Call) Run(run func(ctx context.Context, id uuid.UUID)) *MockVideoRepository_IncrementViewsWithOutbox_Call {
+func (_c *MockVideoRepository_IncrementViews_Call) Run(run func(ctx context.Context, id uuid.UUID)) *MockVideoRepository_IncrementViews_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -161,12 +161,12 @@ func (_c *MockVideoRepository_IncrementViewsWithOutbox_Call) Run(run func(ctx co
 	return _c
 }
 
-func (_c *MockVideoRepository_IncrementViewsWithOutbox_Call) Return(video domain.Video, err error) *MockVideoRepository_IncrementViewsWithOutbox_Call {
+func (_c *MockVideoRepository_IncrementViews_Call) Return(video domain.Video, err error) *MockVideoRepository_IncrementViews_Call {
 	_c.Call.Return(video, err)
 	return _c
 }
 
-func (_c *MockVideoRepository_IncrementViewsWithOutbox_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID) (domain.Video, error)) *MockVideoRepository_IncrementViewsWithOutbox_Call {
+func (_c *MockVideoRepository_IncrementViews_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID) (domain.Video, error)) *MockVideoRepository_IncrementViews_Call {
 	_c.Call.Return(run)
 	return _c
 }

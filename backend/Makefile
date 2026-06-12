@@ -1,11 +1,11 @@
 .PHONY: help
-.PHONY: compose-up compose-down compose-logs compose-ps
+.PHONY: compose-up compose-infra compose-full compose-up-all compose-down compose-logs compose-ps
 .PHONY: install-tools install-tools-latest install-go-tools install-codegen-python-deps
 .PHONY: merge-schemas openapi-bundle oapi-codegen validate-openapi openapi sqlc mockery generate
-.PHONY: migrate-up migrate-down migrate-status migrate-create seed-assets
+.PHONY: migrate-up migrate-down migrate-status migrate-create require-postgres-dsn upload-assets seed-assets verify-assets verify-seaweedfs-admin verify-compose verify-caddy
 .PHONY: build run clean
-.PHONY: test test-race tese-race test-unit test-integration test-e2e
-.PHONY: lint lint-fix deps-audit fmt mod-tidy
+.PHONY: test test-race tese-race test-no-race test-unit test-unit-race test-integration test-integration-race test-e2e test-e2e-race test-all
+.PHONY: lint lint-integration lint-e2e lint-fix deps-audit fmt mod-tidy
 
 SHELL := /usr/bin/env bash
 
@@ -18,16 +18,22 @@ ifneq ($(wildcard $(ENV_FILE)),)
 include $(ENV_FILE)
 export
 endif
+unexport SEAWEEDFS_ADMIN_BASIC_AUTH_HASH
 
 APP_BIN := bin/videolibrary
 GO_PACKAGES := ./...
 GO_PROD_PACKAGES := ./cmd/... ./config/... ./internal/... ./pkg/...
 GO_FILES := $(shell find . -type f -name '*.go' -not -path './bin/*')
-POSTGRES_DSN ?= postgres://videolibrary:videolibrary@localhost:5432/videolibrary?sslmode=disable
-BASE_STACK := docker compose -f ../docker-compose.yml --env-file $(ENV_FILE)
+UNIT_TEST_PACKAGES := ./cmd/... ./config/... ./internal/... ./pkg/...
+TEST_TIMEOUT ?= 15m
+TEST_PARALLEL ?= 5
+POSTGRES_DSN ?=
+BASE_STACK := docker compose -f ../deployment/docker/docker-compose.yml --env-file $(ENV_FILE)
 ASSETS_DIR ?= ../assets
-SEAWEEDFS_FILER_URL ?= $(SEAWEEDFS_PUBLIC_URL)
+SEAWEEDFS_FILER_URL ?= http://seaweedfs:$(SEAWEEDFS_PORT)
+SEAWEEDFS_ADMIN_URL ?= https://$(SEAWEEDFS_ADMIN_DOMAIN)
 SEAWEEDFS_VIDEO_PREFIX ?= videos
+SEAWEEDFS_ASSET_FILES := planet_1.5mb.mp4 planet_3mb.mp4 planet_10mb.mp4 planet_18mb.mp4
 
 GO_BIN_DIR ?= $(CURDIR)/bin
 GOCACHE ?= $(GO_BIN_DIR)/.cache/go-build
@@ -45,13 +51,13 @@ REDOCLY_VERSION ?= 1.26.0
 SQLC_VERSION ?= v1.31.1
 USE_NPX_REDOCLY ?= 0
 
-GOOSE := $(GO_BIN_DIR)/goose
-GOIMPORTS := $(GO_BIN_DIR)/goimports
-GOLANGCI_LINT := $(GO_BIN_DIR)/golangci-lint
-GOVULNCHECK := $(GO_BIN_DIR)/govulncheck
-MOCKERY := $(GO_BIN_DIR)/mockery
+GOOSE := $(shell if [ -x "$(GO_BIN_DIR)/goose" ]; then printf '%s' "$(GO_BIN_DIR)/goose"; else command -v goose 2>/dev/null || printf '%s' "$(GO_BIN_DIR)/goose"; fi)
+GOIMPORTS := $(shell if [ -x "$(GO_BIN_DIR)/goimports" ]; then printf '%s' "$(GO_BIN_DIR)/goimports"; else command -v goimports 2>/dev/null || printf '%s' "$(GO_BIN_DIR)/goimports"; fi)
+GOLANGCI_LINT := $(shell if [ -x "$(GO_BIN_DIR)/golangci-lint" ]; then printf '%s' "$(GO_BIN_DIR)/golangci-lint"; else command -v golangci-lint 2>/dev/null || printf '%s' "$(GO_BIN_DIR)/golangci-lint"; fi)
+GOVULNCHECK := $(shell if [ -x "$(GO_BIN_DIR)/govulncheck" ]; then printf '%s' "$(GO_BIN_DIR)/govulncheck"; else command -v govulncheck 2>/dev/null || printf '%s' "$(GO_BIN_DIR)/govulncheck"; fi)
+MOCKERY := $(shell if [ -x "$(GO_BIN_DIR)/mockery" ]; then printf '%s' "$(GO_BIN_DIR)/mockery"; else command -v mockery 2>/dev/null || printf '%s' "$(GO_BIN_DIR)/mockery"; fi)
 OAPI_CODEGEN := $(shell if [ -x "$(GO_BIN_DIR)/oapi-codegen" ]; then printf '%s' "$(GO_BIN_DIR)/oapi-codegen"; else command -v oapi-codegen 2>/dev/null || printf '%s' "$(GO_BIN_DIR)/oapi-codegen"; fi)
-SQLC := $(GO_BIN_DIR)/sqlc
+SQLC := $(shell if [ -x "$(GO_BIN_DIR)/sqlc" ]; then printf '%s' "$(GO_BIN_DIR)/sqlc"; else command -v sqlc 2>/dev/null || printf '%s' "$(GO_BIN_DIR)/sqlc"; fi)
 REDOCLY := npx --yes @redocly/cli@$(REDOCLY_VERSION)
 CODEGEN_VENV := .venv-codegen
 CODEGEN_PYTHON := $(CODEGEN_VENV)/bin/python
@@ -68,11 +74,23 @@ help: ## Show available targets.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make <target>\n"} /^[a-zA-Z_0-9-]+:.*##/ {printf "  %-24s %s\n", $$1, $$2} /^##@/ {printf "\n%s\n", substr($$0, 5)}' $(MAKEFILE_LIST)
 
 ##@ Compose
-compose-up: ## Start PostgreSQL, Redis, and SeaweedFS from the root compose file.
-	$(BASE_STACK) up -d postgres redis seaweedfs
+compose-up: compose-infra seed-assets ## Start local infrastructure and seed storage assets.
+
+compose-infra: ## Start PostgreSQL, Redis, SeaweedFS, and the official SeaweedFS admin UI.
+	$(BASE_STACK) up -d postgres redis seaweedfs seaweedfs-admin
+	@echo "Infrastructure started"
+	@echo "SeaweedFS admin UI will be available through proxy at $(SEAWEEDFS_ADMIN_URL)"
+
+compose-full: compose-infra ## Start infrastructure, backend, proxy, and seed storage assets.
+	$(BASE_STACK) up --build -d app proxy
+	$(MAKE) upload-assets
+	@echo "Full stack started"
+
+compose-up-all: compose-full ## Alias for compose-full.
 
 compose-down: ## Stop the root compose stack.
-	$(BASE_STACK) down
+	$(BASE_STACK) down --remove-orphans
+	@echo "Stack stopped"
 
 compose-logs: ## Tail logs from the root compose stack.
 	$(BASE_STACK) logs -f
@@ -161,21 +179,39 @@ mockery: ## Generate mocks for configured packages.
 generate: validate-openapi oapi-codegen sqlc mockery ## Run all code generators.
 
 ##@ Migrations
-migrate-up: ## Apply all pending database migrations.
+migrate-up: require-postgres-dsn ## Apply all pending database migrations.
 	$(GOOSE) -dir migrations postgres "$(POSTGRES_DSN)" up
 
-migrate-down: ## Roll back one database migration.
+migrate-down: require-postgres-dsn ## Roll back one database migration.
 	$(GOOSE) -dir migrations postgres "$(POSTGRES_DSN)" down
 
-migrate-status: ## Show database migration status.
+migrate-status: require-postgres-dsn ## Show database migration status.
 	$(GOOSE) -dir migrations postgres "$(POSTGRES_DSN)" status
+
+require-postgres-dsn:
+	@test -n "$(POSTGRES_DSN)" || (echo "POSTGRES_DSN is required for host-side goose commands" && exit 1)
 
 migrate-create: ## Create a migration: make migrate-create name=create_videos_table.
 	@test -n "$(name)" || (echo "name is required" && exit 1)
 	$(GOOSE) -dir migrations create "$(name)" sql
 
-seed-assets: migrate-up ## Apply migrations and upload local video assets to the SeaweedFS filer.
-	ASSETS_DIR="$(ASSETS_DIR)" SEAWEEDFS_FILER_URL="$(SEAWEEDFS_FILER_URL)" SEAWEEDFS_VIDEO_PREFIX="$(SEAWEEDFS_VIDEO_PREFIX)" bash script/seed-seaweedfs-assets.sh
+upload-assets: ## Upload local video assets to the SeaweedFS filer.
+	$(BASE_STACK) run --rm asset-seeder
+
+verify-assets: ## Verify seeded video assets are readable from SeaweedFS.
+	$(BASE_STACK) run --rm --entrypoint /bin/sh asset-seeder -eu -c 'for file in $(SEAWEEDFS_ASSET_FILES); do url="$(SEAWEEDFS_FILER_URL)/$(SEAWEEDFS_VIDEO_PREFIX)/$$file"; curl --fail --silent --show-error --head "$$url" >/dev/null; echo "verified $$url"; done'
+
+verify-seaweedfs-admin: ## Verify the official SeaweedFS admin UI is reachable.
+	curl --fail --silent --show-error --user "$(SEAWEEDFS_ADMIN_BASIC_AUTH_USER):$(SEAWEEDFS_ADMIN_PASSWORD)" "$(SEAWEEDFS_ADMIN_URL)" >/dev/null
+	@echo "verified $(SEAWEEDFS_ADMIN_URL)"
+
+seed-assets: upload-assets verify-assets ## Upload and verify local video assets.
+
+verify-compose: ## Validate Docker Compose config, including the tools profile.
+	$(BASE_STACK) --profile tools config >/tmp/videolibrary-compose.yml
+
+verify-caddy: ## Validate Caddyfile through the Compose/Make path.
+	$(BASE_STACK) run --rm --no-deps proxy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
 ##@ Build
 build: ## Build the application binary.
@@ -188,21 +224,33 @@ clean: ## Remove generated local build artifacts.
 	rm -rf bin coverage.out coverage.html
 
 ##@ Tests
-test: ## Run all Go tests.
-	go test $(GO_PACKAGES)
+test: ## Run unit tests.
+	go test -parallel $(TEST_PARALLEL) -timeout $(TEST_TIMEOUT) $(UNIT_TEST_PACKAGES)
 
-test-race: ## Run all Go tests with the race detector.
-	go test -race $(GO_PACKAGES)
+test-unit: test ## Alias for unit tests.
+
+test-unit-race: ## Run unit tests with the race detector.
+	go test -race -parallel $(TEST_PARALLEL) -timeout $(TEST_TIMEOUT) $(UNIT_TEST_PACKAGES)
+
+test-race: test-unit-race test-integration-race test-e2e-race ## Run all tests with the race detector.
 
 tese-race: test-race ## Backward-compatible alias for the requested race-test target.
 
-test-unit: test ## Run unit tests.
+test-no-race: test ## Alias for unit tests without the race detector.
 
 test-integration: ## Run integration tests.
-	go test -tags=integration $(GO_PACKAGES)
+	go test -count=1 -tags=integration -parallel $(TEST_PARALLEL) -timeout $(TEST_TIMEOUT) -v ./integration-test/...
+
+test-integration-race: ## Run integration tests with the race detector.
+	go test -count=1 -tags=integration -race -parallel $(TEST_PARALLEL) -timeout $(TEST_TIMEOUT) -v ./integration-test/...
 
 test-e2e: ## Run end-to-end tests.
-	go test -tags=e2e $(GO_PACKAGES)
+	go test -count=1 -tags=e2e -parallel $(TEST_PARALLEL) -timeout $(TEST_TIMEOUT) -v ./e2e-test/...
+
+test-e2e-race: ## Run end-to-end tests with the race detector.
+	go test -count=1 -tags=e2e -race -parallel $(TEST_PARALLEL) -timeout $(TEST_TIMEOUT) -v ./e2e-test/...
+
+test-all: test test-integration test-e2e ## Run unit, integration, and end-to-end tests without the race detector.
 
 ##@ Quality
 fmt: ## Format Go files with goimports when available, otherwise gofmt.
@@ -226,7 +274,25 @@ lint: ## Run golangci-lint when available, otherwise go vet.
 		go vet $(GO_PACKAGES); \
 	fi
 
-lint-fix: fmt mod-tidy lint test ## Format, tidy, lint, and test the backend.
+lint-integration: ## Lint integration tests that are guarded by the integration build tag.
+	@if [ -x "$(GOLANGCI_LINT)" ]; then \
+		$(GOLANGCI_LINT) run --build-tags=integration ./integration-test/...; \
+	elif command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run --build-tags=integration ./integration-test/...; \
+	else \
+		go test -run='^$$' -tags=integration ./integration-test/...; \
+	fi
+
+lint-e2e: ## Lint E2E tests that are guarded by the e2e build tag.
+	@if [ -x "$(GOLANGCI_LINT)" ]; then \
+		$(GOLANGCI_LINT) run --build-tags=e2e ./e2e-test/...; \
+	elif command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run --build-tags=e2e ./e2e-test/...; \
+	else \
+		go test -run='^$$' -tags=e2e ./e2e-test/...; \
+	fi
+
+lint-fix: fmt mod-tidy lint lint-integration lint-e2e test ## Format, tidy, lint, and test the backend.
 
 deps-audit: ## Run govulncheck when available.
 	@if [ -x "$(GOVULNCHECK)" ]; then \

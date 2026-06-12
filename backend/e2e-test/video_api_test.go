@@ -35,9 +35,9 @@ func TestVideoAPIE2EListIncrementAndHealthz(t *testing.T) {
 	t.Cleanup(func() {
 		stopApp()
 		select {
-		case err := <-done:
-			if err != nil {
-				t.Fatalf("application.Run() error = %v", err)
+		case runErr := <-done:
+			if runErr != nil {
+				t.Fatalf("application.Run() error = %v", runErr)
 			}
 		case <-time.After(5 * time.Second):
 			t.Fatal("application did not stop")
@@ -71,6 +71,20 @@ func TestVideoAPIE2EListIncrementAndHealthz(t *testing.T) {
 	}
 
 	video := (*firstList.JSON200)[0]
+	direct, err := client.GetVideoWithResponse(ctx, uuid.UUID(video.Id))
+	if err != nil {
+		t.Fatalf("GetVideoWithResponse() error = %v", err)
+	}
+	if direct.StatusCode() != http.StatusOK || direct.JSON200 == nil {
+		t.Fatalf("direct video status = %d body=%s", direct.StatusCode(), direct.Body)
+	}
+	if direct.JSON200.Id != video.Id ||
+		direct.JSON200.Title != video.Title ||
+		direct.JSON200.FilePath != video.FilePath ||
+		direct.JSON200.Views != video.Views {
+		t.Fatalf("direct video = %#v, want %#v", *direct.JSON200, video)
+	}
+
 	increment, err := client.IncrementVideoViewsWithResponse(ctx, uuid.UUID(video.Id))
 	if err != nil {
 		t.Fatalf("IncrementVideoViewsWithResponse() error = %v", err)
@@ -85,7 +99,38 @@ func TestVideoAPIE2EListIncrementAndHealthz(t *testing.T) {
 		t.Fatalf("increment views = %d, want %d", increment.JSON200.Views, video.Views+1)
 	}
 
-	waitForListedViews(t, ctx, client, uuid.UUID(video.Id), video.Views+1)
+	updatedList, err := client.ListVideosWithResponse(ctx)
+	if err != nil {
+		t.Fatalf("ListVideosWithResponse() after increment error = %v", err)
+	}
+	if updatedList.StatusCode() != http.StatusOK || updatedList.JSON200 == nil {
+		t.Fatalf("updated list status = %d body=%s", updatedList.StatusCode(), updatedList.Body)
+	}
+	foundUpdated := false
+	for _, listed := range *updatedList.JSON200 {
+		if listed.Id == video.Id {
+			if listed.Views != video.Views+1 {
+				t.Fatalf("listed views immediately after increment = %d, want %d", listed.Views, video.Views+1)
+			}
+			foundUpdated = true
+			break
+		}
+	}
+	if !foundUpdated {
+		t.Fatalf("updated list does not contain video %s", video.Id)
+	}
+
+	missingID, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("uuid.NewV7() error = %v", err)
+	}
+	missing, err := client.GetVideoWithResponse(ctx, missingID)
+	if err != nil {
+		t.Fatalf("GetVideoWithResponse() missing error = %v", err)
+	}
+	if missing.StatusCode() != http.StatusNotFound || missing.JSON404 == nil {
+		t.Fatalf("missing video status = %d body=%s", missing.StatusCode(), missing.Body)
+	}
 }
 
 func testConfig(t *testing.T, ctx context.Context) config.Config {
@@ -98,9 +143,12 @@ func testConfig(t *testing.T, ctx context.Context) config.Config {
 		},
 		HTTP: config.HTTP{
 			Addr:              freeTCPAddr(t),
+			ReadTimeout:       5 * time.Second,
 			ReadHeaderTimeout: 2 * time.Second,
 			WriteTimeout:      5 * time.Second,
+			IdleTimeout:       10 * time.Second,
 			ShutdownTimeout:   5 * time.Second,
+			MaxHeaderBytes:    1 << 20,
 		},
 		PostgreSQL: startPostgresContainer(t, ctx),
 		Redis:      startRedisContainer(t, ctx),
@@ -140,38 +188,6 @@ func waitForHealthz(t *testing.T, ctx context.Context, client *openapi.ClientWit
 				return
 			}
 			lastErr = err
-		}
-	}
-}
-
-func waitForListedViews(
-	t *testing.T,
-	ctx context.Context,
-	client *openapi.ClientWithResponses,
-	id uuid.UUID,
-	wantViews int64,
-) {
-	t.Helper()
-
-	deadline := time.After(10 * time.Second)
-	ticker := time.NewTicker(50 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			t.Fatalf("wait for listed views context error: %v", ctx.Err())
-		case <-deadline:
-			t.Fatalf("video %s did not reach views %d in list", id, wantViews)
-		case <-ticker.C:
-			response, err := client.ListVideosWithResponse(ctx)
-			if err != nil || response.StatusCode() != http.StatusOK || response.JSON200 == nil {
-				continue
-			}
-			for _, video := range *response.JSON200 {
-				if uuid.UUID(video.Id) == id && video.Views == wantViews {
-					return
-				}
-			}
 		}
 	}
 }

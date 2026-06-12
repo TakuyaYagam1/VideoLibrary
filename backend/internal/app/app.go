@@ -5,14 +5,14 @@ import (
 	"fmt"
 
 	"github.com/TakuyaYagam1/VideoLibrary/backend/config"
-	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/restapi"
+	v1 "github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/restapi/v1"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/repo/persistent"
+	rediscache "github.com/TakuyaYagam1/VideoLibrary/backend/internal/repo/redis"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/usecase"
 	pgconnector "github.com/TakuyaYagam1/VideoLibrary/backend/pkg/postgres"
 	redisconnector "github.com/TakuyaYagam1/VideoLibrary/backend/pkg/redis"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
-	"github.com/wahrwelt-kit/go-cachekit"
 	logkit "github.com/wahrwelt-kit/go-logkit"
 	"golang.org/x/sync/errgroup"
 )
@@ -21,8 +21,8 @@ type App struct {
 	config       config.Config
 	postgresPool *pgxpool.Pool
 	redisClient  *redis.Client
-	cache        *cachekit.Cache
-	videoService *usecase.VideoService
+	cache        *rediscache.Cache
+	videoService usecase.VideoUsecase
 	httpServer   *HTTPServer
 	outboxWorker *OutboxWorker
 }
@@ -41,16 +41,17 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	redisClient, cache, err := redisconnector.NewCache(ctx, cfg.Redis)
+	redisClient, _, err := redisconnector.NewCache(ctx, cfg.Redis)
 	if err != nil {
 		logger.ErrorContext(ctx, "connect redis", logkit.Component("app"), logkit.Error(err))
 		pool.Close()
 		return nil, err
 	}
+	cache := rediscache.NewCache(redisClient)
 
 	videoService, err := usecase.NewVideoService(
-		persistent.NewVideoRepository(pool),
-		usecase.NewCacheKitVideoCache(cache),
+		persistent.NewVideoRepository(pool, cfg.SeaweedFS.PublicURL),
+		cache,
 		cfg.Cache.VideoListTTL,
 	)
 	if err != nil {
@@ -60,15 +61,16 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	router := restapi.NewRouter(
+	router := v1.NewRouter(
 		videoService,
-		restapi.NewHealthCheckers(
+		v1.NewHealthCheckers(
 			pool.Ping,
 			func(ctx context.Context) error {
 				return redisClient.Ping(ctx).Err()
 			},
 		),
 		cfg.Health.CheckTimeout,
+		cfg.HTTP.AllowedOrigins,
 		logger,
 	)
 	outboxWorker, err := NewOutboxWorker(persistent.NewOutboxRepository(pool), cache, logger)
@@ -99,11 +101,11 @@ func (a *App) Close() {
 	}
 }
 
-func (a *App) Cache() *cachekit.Cache {
+func (a *App) Cache() *rediscache.Cache {
 	return a.cache
 }
 
-func (a *App) VideoService() *usecase.VideoService {
+func (a *App) VideoService() usecase.VideoUsecase {
 	return a.videoService
 }
 

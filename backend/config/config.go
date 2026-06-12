@@ -11,6 +11,12 @@ import (
 	"time"
 )
 
+const (
+	backendBindHost    = "0.0.0.0"
+	postgresDockerHost = "postgres"
+	redisDockerHost    = "redis"
+)
+
 type Config struct {
 	App        App
 	HTTP       HTTP
@@ -28,10 +34,15 @@ type App struct {
 }
 
 type HTTP struct {
+	Port              int
 	Addr              string
+	AllowedOrigins    []string
+	ReadTimeout       time.Duration
 	ReadHeaderTimeout time.Duration
 	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
 	ShutdownTimeout   time.Duration
+	MaxHeaderBytes    int
 }
 
 type PostgreSQL struct {
@@ -87,9 +98,14 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 	required := []string{
 		"APP_NAME",
 		"APP_ENV",
-		"HTTP_ADDR",
-		"POSTGRES_DSN",
-		"SEAWEEDFS_PUBLIC_URL",
+		"BACKEND_PORT",
+		"FRONTEND_DOMAIN",
+		"POSTGRES_DB",
+		"POSTGRES_USER",
+		"POSTGRES_PASSWORD",
+		"POSTGRES_PORT",
+		"POSTGRES_SSLMODE",
+		"SEAWEEDFS_FILES_DOMAIN",
 		"LOG_LEVEL",
 		"LOG_FORMAT",
 	}
@@ -118,6 +134,34 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, MissingRequiredEnvError{Names: missing}
 	}
 
+	backendPort, err := parsePort("BACKEND_PORT", values["BACKEND_PORT"])
+	if err != nil {
+		return Config{}, err
+	}
+	backendAddr := net.JoinHostPort(backendBindHost, strconv.Itoa(backendPort))
+	frontendOrigin, err := publicHTTPSURL("FRONTEND_DOMAIN", values["FRONTEND_DOMAIN"])
+	if err != nil {
+		return Config{}, err
+	}
+
+	postgresPort, err := parsePort("POSTGRES_PORT", values["POSTGRES_PORT"])
+	if err != nil {
+		return Config{}, err
+	}
+	postgresDSN := buildPostgresDSN(
+		values["POSTGRES_USER"],
+		values["POSTGRES_PASSWORD"],
+		postgresDockerHost,
+		postgresPort,
+		values["POSTGRES_DB"],
+		values["POSTGRES_SSLMODE"],
+	)
+
+	seaweedfsPublicURL, err := publicHTTPSURL("SEAWEEDFS_FILES_DOMAIN", values["SEAWEEDFS_FILES_DOMAIN"])
+	if err != nil {
+		return Config{}, err
+	}
+
 	redisDB, err := optionalInt(lookup, "REDIS_DB", 0)
 	if err != nil {
 		return Config{}, err
@@ -142,11 +186,23 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	httpReadTimeout, err := optionalDuration(lookup, "HTTP_READ_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
 	httpWriteTimeout, err := optionalDuration(lookup, "HTTP_WRITE_TIMEOUT", 30*time.Second)
 	if err != nil {
 		return Config{}, err
 	}
+	httpIdleTimeout, err := optionalDuration(lookup, "HTTP_IDLE_TIMEOUT", 60*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
 	httpShutdownTimeout, err := optionalDuration(lookup, "HTTP_SHUTDOWN_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
+	httpMaxHeaderBytes, err := optionalInt(lookup, "HTTP_MAX_HEADER_BYTES", 1<<20)
 	if err != nil {
 		return Config{}, err
 	}
@@ -173,13 +229,18 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 			Env:  values["APP_ENV"],
 		},
 		HTTP: HTTP{
-			Addr:              values["HTTP_ADDR"],
+			Port:              backendPort,
+			Addr:              backendAddr,
+			AllowedOrigins:    []string{frontendOrigin},
+			ReadTimeout:       httpReadTimeout,
 			ReadHeaderTimeout: httpReadHeaderTimeout,
 			WriteTimeout:      httpWriteTimeout,
+			IdleTimeout:       httpIdleTimeout,
 			ShutdownTimeout:   httpShutdownTimeout,
+			MaxHeaderBytes:    httpMaxHeaderBytes,
 		},
 		PostgreSQL: PostgreSQL{
-			DSN:            values["POSTGRES_DSN"],
+			DSN:            postgresDSN,
 			MaxConns:       postgresMaxConns,
 			MinConns:       postgresMinConns,
 			RetryTimeout:   postgresRetryTimeout,
@@ -201,7 +262,7 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 			CheckTimeout: healthCheckTimeout,
 		},
 		SeaweedFS: SeaweedFS{
-			PublicURL: values["SEAWEEDFS_PUBLIC_URL"],
+			PublicURL: seaweedfsPublicURL,
 		},
 		Log: Log{
 			Level:    values["LOG_LEVEL"],
@@ -219,8 +280,14 @@ func LoadFromLookup(lookup func(string) (string, bool)) (Config, error) {
 }
 
 func (c Config) Validate() error {
-	if err := validateTCPAddr("HTTP_ADDR", c.HTTP.Addr); err != nil {
+	if c.HTTP.Port < 1 || c.HTTP.Port > 65535 {
+		return fmt.Errorf("BACKEND_PORT must be in range 1-65535")
+	}
+	if err := validateTCPAddr("BACKEND_ADDR", c.HTTP.Addr); err != nil {
 		return err
+	}
+	if c.HTTP.ReadTimeout <= 0 {
+		return fmt.Errorf("HTTP_READ_TIMEOUT must be greater than 0")
 	}
 	if c.HTTP.ReadHeaderTimeout <= 0 {
 		return fmt.Errorf("HTTP_READ_HEADER_TIMEOUT must be greater than 0")
@@ -228,11 +295,17 @@ func (c Config) Validate() error {
 	if c.HTTP.WriteTimeout <= 0 {
 		return fmt.Errorf("HTTP_WRITE_TIMEOUT must be greater than 0")
 	}
+	if c.HTTP.IdleTimeout <= 0 {
+		return fmt.Errorf("HTTP_IDLE_TIMEOUT must be greater than 0")
+	}
 	if c.HTTP.ShutdownTimeout <= 0 {
 		return fmt.Errorf("HTTP_SHUTDOWN_TIMEOUT must be greater than 0")
 	}
+	if c.HTTP.MaxHeaderBytes <= 0 {
+		return fmt.Errorf("HTTP_MAX_HEADER_BYTES must be greater than 0")
+	}
 
-	if err := validatePostgresDSN(c.PostgreSQL.DSN); err != nil {
+	if err := validatePostgresURL(c.PostgreSQL.DSN); err != nil {
 		return err
 	}
 	if c.PostgreSQL.MinConns > c.PostgreSQL.MaxConns && c.PostgreSQL.MaxConns > 0 {
@@ -255,7 +328,7 @@ func (c Config) Validate() error {
 		return fmt.Errorf("HEALTH_CHECK_TIMEOUT must be greater than 0")
 	}
 
-	if err := validateHTTPURL("SEAWEEDFS_PUBLIC_URL", c.SeaweedFS.PublicURL); err != nil {
+	if err := validateHTTPURL("seaweedfs public URL", c.SeaweedFS.PublicURL); err != nil {
 		return err
 	}
 
@@ -316,31 +389,15 @@ func optionalInt(lookup func(string) (string, bool), name string, fallback int) 
 }
 
 func redisEndpoint(lookup func(string) (string, bool)) (string, int, []string, error) {
-	host := optionalString(lookup, "REDIS_HOST")
 	portValue, portOK := lookup("REDIS_PORT")
 	portValue = strings.TrimSpace(portValue)
 
-	if host != "" && portOK && portValue != "" {
-		port, err := parseInt("REDIS_PORT", portValue)
-		return host, port, nil, err
-	}
-
-	if host == "" && (!portOK || portValue == "") {
-		addr := optionalString(lookup, "REDIS_ADDR")
-		if addr != "" {
-			addrHost, addrPort, err := net.SplitHostPort(addr)
-			if err != nil {
-				return "", 0, nil, fmt.Errorf("REDIS_ADDR must be in host:port form: %w", err)
-			}
-			port, err := parseInt("REDIS_ADDR port", addrPort)
-			return addrHost, port, nil, err
-		}
+	if portOK && portValue != "" {
+		port, err := parsePort("REDIS_PORT", portValue)
+		return redisDockerHost, port, nil, err
 	}
 
 	var missing []string
-	if host == "" {
-		missing = append(missing, "REDIS_HOST")
-	}
 	if !portOK || portValue == "" {
 		missing = append(missing, "REDIS_PORT")
 	}
@@ -348,8 +405,34 @@ func redisEndpoint(lookup func(string) (string, bool)) (string, int, []string, e
 		return "", 0, missing, nil
 	}
 
-	port, err := parseInt("REDIS_PORT", portValue)
-	return host, port, nil, err
+	port, err := parsePort("REDIS_PORT", portValue)
+	return redisDockerHost, port, nil, err
+}
+
+func buildPostgresDSN(user string, password string, host string, port int, db string, sslmode string) string {
+	postgresURL := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(user, password),
+		Host:   net.JoinHostPort(host, strconv.Itoa(port)),
+		Path:   db,
+	}
+	query := postgresURL.Query()
+	query.Set("sslmode", sslmode)
+	postgresURL.RawQuery = query.Encode()
+
+	return postgresURL.String()
+}
+
+func publicHTTPSURL(name string, domain string) (string, error) {
+	if err := validateDomain(name, domain); err != nil {
+		return "", err
+	}
+	httpURL := url.URL{
+		Scheme: "https",
+		Host:   domain,
+	}
+
+	return httpURL.String(), nil
 }
 
 func parseInt(name string, value string) (int, error) {
@@ -362,6 +445,18 @@ func parseInt(name string, value string) (int, error) {
 	}
 
 	return parsed, nil
+}
+
+func parsePort(name string, value string) (int, error) {
+	port, err := parseInt(name, value)
+	if err != nil {
+		return 0, err
+	}
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("%s must be in range 1-65535", name)
+	}
+
+	return port, nil
 }
 
 func optionalDuration(lookup func(string) (string, bool), name string, fallback time.Duration) (time.Duration, error) {
@@ -390,20 +485,34 @@ func validateTCPAddr(name string, value string) error {
 	return nil
 }
 
-func validatePostgresDSN(value string) error {
+func validateDomain(name string, value string) error {
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("%s must not be empty", name)
+	}
+	if strings.Contains(value, "://") {
+		return fmt.Errorf("%s must be a domain name without scheme", name)
+	}
+	if strings.ContainsAny(value, "/?# \t\r\n") {
+		return fmt.Errorf("%s must be a domain name without path, query, or whitespace", name)
+	}
+
+	return nil
+}
+
+func validatePostgresURL(value string) error {
 	parsed, err := url.Parse(value)
 	if err != nil {
-		return fmt.Errorf("POSTGRES_DSN must be a valid URL: %w", err)
+		return fmt.Errorf("postgres URL must be valid: %w", err)
 	}
 
 	if parsed.Scheme != "postgres" && parsed.Scheme != "postgresql" {
-		return fmt.Errorf("POSTGRES_DSN must use postgres or postgresql scheme")
+		return fmt.Errorf("postgres URL must use postgres or postgresql scheme")
 	}
 	if parsed.Host == "" {
-		return fmt.Errorf("POSTGRES_DSN must include a host")
+		return fmt.Errorf("postgres URL must include a host")
 	}
 	if parsed.Path == "" || parsed.Path == "/" {
-		return fmt.Errorf("POSTGRES_DSN must include a database name")
+		return fmt.Errorf("postgres URL must include a database name")
 	}
 
 	return nil

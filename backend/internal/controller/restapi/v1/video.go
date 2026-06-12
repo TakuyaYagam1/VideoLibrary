@@ -1,35 +1,30 @@
-package restapi
+package v1
 
 import (
-	"context"
+	"errors"
 	"net/http"
 	"time"
 
-	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/restapi/errmap"
-	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/controller/restapi/response"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/domain"
 	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/openapi"
+	"github.com/TakuyaYagam1/VideoLibrary/backend/internal/usecase"
 	"github.com/google/uuid"
+	"github.com/wahrwelt-kit/go-httpkit/httperr"
 	httpkit "github.com/wahrwelt-kit/go-httpkit/httputil"
 )
-
-type VideoUsecase interface {
-	ListVideos(ctx context.Context) ([]domain.Video, error)
-	IncrementViews(ctx context.Context, id uuid.UUID) (domain.Video, error)
-}
 
 type HandlerOption func(*Handler)
 
 type Handler struct {
 	openapi.Unimplemented
 
-	video  VideoUsecase
+	video  usecase.VideoUsecase
 	health http.HandlerFunc
 }
 
 var _ openapi.ServerInterface = (*Handler)(nil)
 
-func NewHandler(video VideoUsecase, opts ...HandlerOption) *Handler {
+func NewHandler(video usecase.VideoUsecase, opts ...HandlerOption) *Handler {
 	handler := &Handler{
 		video: video,
 	}
@@ -50,21 +45,31 @@ func WithHealthCheckers(checkers map[string]httpkit.Checker, timeout time.Durati
 func (h *Handler) ListVideos(w http.ResponseWriter, r *http.Request) {
 	videos, err := h.video.ListVideos(r.Context())
 	if err != nil {
-		errmap.WriteUsecase(w, err)
+		httpkit.HandleError(w, r, mapVideoError(err))
 		return
 	}
 
-	response.WriteJSON(w, http.StatusOK, mapVideos(videos))
+	httpkit.RenderOK(w, r, mapVideos(videos))
+}
+
+func (h *Handler) GetVideo(w http.ResponseWriter, r *http.Request, id uuid.UUID) {
+	video, err := h.video.GetVideo(r.Context(), id)
+	if err != nil {
+		httpkit.HandleError(w, r, mapVideoError(err))
+		return
+	}
+
+	httpkit.RenderOK(w, r, mapVideo(video))
 }
 
 func (h *Handler) IncrementVideoViews(w http.ResponseWriter, r *http.Request, id uuid.UUID) {
 	video, err := h.video.IncrementViews(r.Context(), id)
 	if err != nil {
-		errmap.WriteUsecase(w, err)
+		httpkit.HandleError(w, r, mapVideoError(err))
 		return
 	}
 
-	response.WriteJSON(w, http.StatusOK, openapi.IncrementViewsResponse{
+	httpkit.RenderOK(w, r, openapi.IncrementViewsResponse{
 		Id:    video.ID,
 		Views: video.Views,
 	})
@@ -72,6 +77,10 @@ func (h *Handler) IncrementVideoViews(w http.ResponseWriter, r *http.Request, id
 
 func (h *Handler) GetHealthz(w http.ResponseWriter, r *http.Request) {
 	h.health(w, r)
+}
+
+func (h *Handler) GetLivez(w http.ResponseWriter, r *http.Request) {
+	httpkit.RenderOK(w, r, openapi.HealthResponse{Status: openapi.Ok})
 }
 
 func mapVideos(videos []domain.Video) []openapi.Video {
@@ -91,4 +100,12 @@ func mapVideo(video domain.Video) openapi.Video {
 		Views:     video.Views,
 		CreatedAt: video.CreatedAt,
 	}
+}
+
+func mapVideoError(err error) error {
+	if errors.Is(err, domain.ErrVideoNotFound) {
+		return httperr.New(err, http.StatusNotFound, httperr.CodeNotFound)
+	}
+
+	return err
 }

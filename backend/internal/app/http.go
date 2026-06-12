@@ -24,8 +24,11 @@ func NewHTTPServer(cfg config.HTTP, handler http.Handler, logger logkit.Logger) 
 		server: &http.Server{
 			Addr:              cfg.Addr,
 			Handler:           handler,
+			ReadTimeout:       cfg.ReadTimeout,
 			ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 			WriteTimeout:      cfg.WriteTimeout,
+			IdleTimeout:       cfg.IdleTimeout,
+			MaxHeaderBytes:    cfg.MaxHeaderBytes,
 		},
 		shutdownTimeout: cfg.ShutdownTimeout,
 		logger:          logger,

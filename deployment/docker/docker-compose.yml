@@ -1,0 +1,247 @@
+# up from root dir with: docker compose --env-file .env -f deployment/docker/docker-compose.yml up --build -d
+
+services:
+  app:
+    image: videolibrary
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    environment:
+      APP_NAME: "${APP_NAME:?APP_NAME is required}"
+      APP_ENV: "${APP_ENV:?APP_ENV is required}"
+      FRONTEND_DOMAIN: "${FRONTEND_DOMAIN:?FRONTEND_DOMAIN is required}"
+      BACKEND_PORT: "${BACKEND_PORT:?BACKEND_PORT is required}"
+      HTTP_READ_TIMEOUT: "${HTTP_READ_TIMEOUT:?HTTP_READ_TIMEOUT is required}"
+      HTTP_READ_HEADER_TIMEOUT: "${HTTP_READ_HEADER_TIMEOUT:?HTTP_READ_HEADER_TIMEOUT is required}"
+      HTTP_WRITE_TIMEOUT: "${HTTP_WRITE_TIMEOUT:?HTTP_WRITE_TIMEOUT is required}"
+      HTTP_IDLE_TIMEOUT: "${HTTP_IDLE_TIMEOUT:?HTTP_IDLE_TIMEOUT is required}"
+      HTTP_SHUTDOWN_TIMEOUT: "${HTTP_SHUTDOWN_TIMEOUT:?HTTP_SHUTDOWN_TIMEOUT is required}"
+      HTTP_MAX_HEADER_BYTES: "${HTTP_MAX_HEADER_BYTES:?HTTP_MAX_HEADER_BYTES is required}"
+      POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB is required}"
+      POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER is required}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+      POSTGRES_PORT: "${POSTGRES_PORT:?POSTGRES_PORT is required}"
+      POSTGRES_SSLMODE: "${POSTGRES_SSLMODE:?POSTGRES_SSLMODE is required}"
+      POSTGRES_MAX_CONNS: "${POSTGRES_MAX_CONNS:?POSTGRES_MAX_CONNS is required}"
+      POSTGRES_MIN_CONNS: "${POSTGRES_MIN_CONNS:?POSTGRES_MIN_CONNS is required}"
+      POSTGRES_RETRY_TIMEOUT: "${POSTGRES_RETRY_TIMEOUT:?POSTGRES_RETRY_TIMEOUT is required}"
+      POSTGRES_CONNECT_TIMEOUT: "${POSTGRES_CONNECT_TIMEOUT:?POSTGRES_CONNECT_TIMEOUT is required}"
+      POSTGRES_MIGRATIONS_PATH: "${POSTGRES_MIGRATIONS_PATH:?POSTGRES_MIGRATIONS_PATH is required}"
+      REDIS_PORT: "${REDIS_PORT:?REDIS_PORT is required}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"
+      REDIS_DB: "${REDIS_DB:?REDIS_DB is required}"
+      REDIS_POOL_SIZE: "${REDIS_POOL_SIZE:?REDIS_POOL_SIZE is required}"
+      REDIS_MIN_IDLE_CONNS: "${REDIS_MIN_IDLE_CONNS:?REDIS_MIN_IDLE_CONNS is required}"
+      CACHE_VIDEO_LIST_TTL: "${CACHE_VIDEO_LIST_TTL:?CACHE_VIDEO_LIST_TTL is required}"
+      HEALTH_CHECK_TIMEOUT: "${HEALTH_CHECK_TIMEOUT:?HEALTH_CHECK_TIMEOUT is required}"
+      SEAWEEDFS_FILES_DOMAIN: "${SEAWEEDFS_FILES_DOMAIN:?SEAWEEDFS_FILES_DOMAIN is required}"
+      LOG_LEVEL: "${LOG_LEVEL:?LOG_LEVEL is required}"
+      LOG_FORMAT: "${LOG_FORMAT:?LOG_FORMAT is required}"
+      LOG_OUTPUT: "${LOG_OUTPUT:?LOG_OUTPUT is required}"
+      LOG_FILE_PATH: "${LOG_FILE_PATH:-}"
+    expose:
+      - "${BACKEND_PORT:?BACKEND_PORT is required}"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 256m
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:$${BACKEND_PORT}/readyz >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 18
+      start_period: 10s
+
+  proxy:
+    image: caddy:2.11.4-alpine
+    environment:
+      ACME_EMAIL: "${ACME_EMAIL:?ACME_EMAIL is required}"
+      FRONTEND_DOMAIN: "${FRONTEND_DOMAIN:?FRONTEND_DOMAIN is required}"
+      BACKEND_DOMAIN: "${BACKEND_DOMAIN:?BACKEND_DOMAIN is required}"
+      BACKEND_PORT: "${BACKEND_PORT:?BACKEND_PORT is required}"
+      SEAWEEDFS_FILES_DOMAIN: "${SEAWEEDFS_FILES_DOMAIN:?SEAWEEDFS_FILES_DOMAIN is required}"
+      SEAWEEDFS_PORT: "${SEAWEEDFS_PORT:?SEAWEEDFS_PORT is required}"
+      SEAWEEDFS_ADMIN_DOMAIN: "${SEAWEEDFS_ADMIN_DOMAIN:?SEAWEEDFS_ADMIN_DOMAIN is required}"
+      SEAWEEDFS_ADMIN_PORT: "${SEAWEEDFS_ADMIN_PORT:?SEAWEEDFS_ADMIN_PORT is required}"
+      SEAWEEDFS_ADMIN_BASIC_AUTH_USER: "${SEAWEEDFS_ADMIN_BASIC_AUTH_USER:?SEAWEEDFS_ADMIN_BASIC_AUTH_USER is required}"
+      SEAWEEDFS_ADMIN_BASIC_AUTH_HASH: "${SEAWEEDFS_ADMIN_BASIC_AUTH_HASH:?SEAWEEDFS_ADMIN_BASIC_AUTH_HASH is required}"
+    ports:
+      - "${PROXY_HTTP_PORT:?PROXY_HTTP_PORT is required}:80"
+      - "${PROXY_HTTPS_PORT:?PROXY_HTTPS_PORT is required}:443"
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      seaweedfs-admin:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 256m
+
+  postgres:
+    image: postgres:18.4-trixie
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB is required}"
+      POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER is required}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+      POSTGRES_PORT: "${POSTGRES_PORT:?POSTGRES_PORT is required}"
+    command: ["postgres", "-c", "port=${POSTGRES_PORT:?POSTGRES_PORT is required}"]
+    expose:
+      - "${POSTGRES_PORT:?POSTGRES_PORT is required}"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 512m
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -p $$POSTGRES_PORT -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  redis:
+    image: redis:8.8.0-trixie
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"
+      REDIS_PORT: "${REDIS_PORT:?REDIS_PORT is required}"
+    command:
+      - /bin/sh
+      - -eu
+      - -c
+      - |
+        cat > /tmp/redis.conf <<EOF
+        appendonly yes
+        port $${REDIS_PORT}
+        requirepass $${REDIS_PASSWORD}
+        EOF
+        exec redis-server /tmp/redis.conf
+    expose:
+      - "${REDIS_PORT:?REDIS_PORT is required}"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 256m
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli -p \"$${REDIS_PORT}\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.32
+    environment:
+      SEAWEEDFS_DATA_DIR: "${SEAWEEDFS_DATA_DIR:?SEAWEEDFS_DATA_DIR is required}"
+      SEAWEEDFS_MASTER_PORT: "${SEAWEEDFS_MASTER_PORT:?SEAWEEDFS_MASTER_PORT is required}"
+      SEAWEEDFS_VOLUME_PORT: "${SEAWEEDFS_VOLUME_PORT:?SEAWEEDFS_VOLUME_PORT is required}"
+      SEAWEEDFS_PORT: "${SEAWEEDFS_PORT:?SEAWEEDFS_PORT is required}"
+    command:
+      - server
+      - -dir=${SEAWEEDFS_DATA_DIR:?SEAWEEDFS_DATA_DIR is required}
+      - -ip=seaweedfs
+      - -ip.bind=0.0.0.0
+      - -master.port=${SEAWEEDFS_MASTER_PORT:?SEAWEEDFS_MASTER_PORT is required}
+      - -volume.port=${SEAWEEDFS_VOLUME_PORT:?SEAWEEDFS_VOLUME_PORT is required}
+      - -filer
+      - -filer.port=${SEAWEEDFS_PORT:?SEAWEEDFS_PORT is required}
+    expose:
+      - "${SEAWEEDFS_PORT:?SEAWEEDFS_PORT is required}"
+      - "${SEAWEEDFS_MASTER_PORT:?SEAWEEDFS_MASTER_PORT is required}"
+      - "${SEAWEEDFS_VOLUME_PORT:?SEAWEEDFS_VOLUME_PORT is required}"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 512m
+    volumes:
+      - seaweedfs-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:$${SEAWEEDFS_MASTER_PORT}/cluster/status >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 18
+      start_period: 10s
+
+  seaweedfs-admin:
+    image: chrislusf/seaweedfs:4.32
+    environment:
+      SEAWEEDFS_MASTER_PORT: "${SEAWEEDFS_MASTER_PORT:?SEAWEEDFS_MASTER_PORT is required}"
+      SEAWEEDFS_ADMIN_PORT: "${SEAWEEDFS_ADMIN_PORT:?SEAWEEDFS_ADMIN_PORT is required}"
+      WEED_ADMIN_USER: "${SEAWEEDFS_ADMIN_USER:?SEAWEEDFS_ADMIN_USER is required}"
+      WEED_ADMIN_PASSWORD: "${SEAWEEDFS_ADMIN_PASSWORD:?SEAWEEDFS_ADMIN_PASSWORD is required}"
+    command:
+      - admin
+      - -master=seaweedfs:${SEAWEEDFS_MASTER_PORT:?SEAWEEDFS_MASTER_PORT is required}
+      - -port=${SEAWEEDFS_ADMIN_PORT:?SEAWEEDFS_ADMIN_PORT is required}
+      - -port.grpc=${SEAWEEDFS_ADMIN_GRPC_PORT:?SEAWEEDFS_ADMIN_GRPC_PORT is required}
+      - -dataDir=${SEAWEEDFS_ADMIN_DATA_DIR:?SEAWEEDFS_ADMIN_DATA_DIR is required}
+    expose:
+      - "${SEAWEEDFS_ADMIN_PORT:?SEAWEEDFS_ADMIN_PORT is required}"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 256m
+    volumes:
+      - seaweedfs-admin-data:/data
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:$${SEAWEEDFS_ADMIN_PORT}/ >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 18
+      start_period: 10s
+
+  asset-seeder:
+    image: curlimages/curl:8.20.0
+    profiles:
+      - tools
+    environment:
+      ASSETS_DIR: /assets
+      SEAWEEDFS_FILER_URL: "http://seaweedfs:${SEAWEEDFS_PORT:?SEAWEEDFS_PORT is required}"
+      SEAWEEDFS_VIDEO_PREFIX: "${SEAWEEDFS_VIDEO_PREFIX:?SEAWEEDFS_VIDEO_PREFIX is required}"
+    volumes:
+      - ../../assets:/assets:ro
+      - ../../backend/script/seed-seaweedfs-assets.sh:/seed-seaweedfs-assets.sh:ro
+    entrypoint:
+      - /bin/sh
+      - /seed-seaweedfs-assets.sh
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postgres-data:
+  redis-data:
+  seaweedfs-data:
+  seaweedfs-admin-data:

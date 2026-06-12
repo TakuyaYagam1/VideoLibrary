@@ -1,8 +1,4 @@
-# syntax=docker/dockerfile:1.7
-
-ARG GO_VERSION=1.26.4
-
-FROM golang:${GO_VERSION}-bookworm AS build
+FROM golang:1.26.4-alpine3.24 AS builder
 
 WORKDIR /src
 
@@ -16,14 +12,17 @@ RUN go mod download
 COPY . .
 RUN go build -trimpath -ldflags="-s -w" -o /out/videolibrary ./cmd/app
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM alpine:3.24.0
 
 WORKDIR /app
 
-COPY --from=build /out/videolibrary /app/videolibrary
-COPY --from=build /src/migrations /app/migrations
+RUN addgroup -S -g 10001 videolibrary \
+    && adduser -S -D -H -u 10001 -G videolibrary videolibrary
 
-USER nonroot:nonroot
+COPY --from=builder /out/videolibrary /app/videolibrary
+COPY --from=builder /src/migrations /app/migrations
+
+USER videolibrary:videolibrary
 EXPOSE 8080
 
 ENTRYPOINT ["/app/videolibrary"]

@@ -18,7 +18,7 @@ SELECT
 FROM videos
 WHERE id = $1;
 
--- name: IncrementViewsWithOutbox :one
+-- name: IncrementViews :one
 WITH updated_video AS (
     UPDATE videos
     SET views = videos.views + 1

@@ -92,6 +92,9 @@ type ClientInterface interface {
 	// ListVideos request
 	ListVideos(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetVideo request
+	GetVideo(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// IncrementVideoViews request
 	IncrementVideoViews(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -101,6 +104,18 @@ type ClientInterface interface {
 
 func (c *Client) ListVideos(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListVideosRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetVideo(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetVideoRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +160,40 @@ func NewListVideosRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/api/videos")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetVideoRequest generates requests for GetVideo
+func NewGetVideoRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/videos/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -269,6 +318,9 @@ type ClientWithResponsesInterface interface {
 	// ListVideosWithResponse request
 	ListVideosWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListVideosResponse, error)
 
+	// GetVideoWithResponse request
+	GetVideoWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetVideoResponse, error)
+
 	// IncrementVideoViewsWithResponse request
 	IncrementVideoViewsWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*IncrementVideoViewsResponse, error)
 
@@ -293,6 +345,31 @@ func (r ListVideosResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListVideosResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetVideoResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Video
+	JSON400      *ErrorResponse
+	JSON404      *ErrorResponse
+	JSON500      *ErrorResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r GetVideoResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetVideoResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -356,6 +433,15 @@ func (c *ClientWithResponses) ListVideosWithResponse(ctx context.Context, reqEdi
 	return ParseListVideosResponse(rsp)
 }
 
+// GetVideoWithResponse request returning *GetVideoResponse
+func (c *ClientWithResponses) GetVideoWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetVideoResponse, error) {
+	rsp, err := c.GetVideo(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetVideoResponse(rsp)
+}
+
 // IncrementVideoViewsWithResponse request returning *IncrementVideoViewsResponse
 func (c *ClientWithResponses) IncrementVideoViewsWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*IncrementVideoViewsResponse, error) {
 	rsp, err := c.IncrementVideoViews(ctx, id, reqEditors...)
@@ -394,6 +480,53 @@ func ParseListVideosResponse(rsp *http.Response) (*ListVideosResponse, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetVideoResponse parses an HTTP response from a GetVideoWithResponse call
+func ParseGetVideoResponse(rsp *http.Response) (*GetVideoResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetVideoResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Video
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest ErrorResponse

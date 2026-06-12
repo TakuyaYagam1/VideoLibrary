@@ -9,17 +9,22 @@ import (
 )
 
 type OutboxEvent struct {
-	ID          pgtype.UUID        `json:"id"`
-	EventType   string             `json:"event_type"`
-	Payload     []byte             `json:"payload"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	ProcessedAt pgtype.Timestamptz `json:"processed_at"`
+	ID           pgtype.UUID        `json:"id"`
+	EventType    string             `json:"event_type"`
+	Payload      []byte             `json:"payload"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	ProcessedAt  pgtype.Timestamptz `json:"processed_at"`
+	ProcessingAt pgtype.Timestamptz `json:"processing_at"`
+	LockedUntil  pgtype.Timestamptz `json:"locked_until"`
+	FailedAt     pgtype.Timestamptz `json:"failed_at"`
+	Attempts     int32              `json:"attempts"`
+	FailureError pgtype.Text        `json:"failure_error"`
 }
 
 type Video struct {
 	ID        pgtype.UUID        `json:"id"`
 	Title     string             `json:"title"`
 	FilePath  string             `json:"file_path"`
-	Views     int32              `json:"views"`
+	Views     int64              `json:"views"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }

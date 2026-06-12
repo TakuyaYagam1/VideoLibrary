@@ -10,6 +10,8 @@ security: []
 paths:
   /api/videos:
     $ref: "./routes/video.yml#/paths/~1api~1videos"
+  /api/videos/{id}:
+    $ref: "./routes/video.yml#/paths/~1api~1videos~1{id}"
   /api/videos/{id}/view:
     $ref: "./routes/video.yml#/paths/~1api~1videos~1{id}~1view"
   /healthz:

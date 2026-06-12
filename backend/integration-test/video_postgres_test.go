@@ -45,11 +45,11 @@ VALUES ($1, $2, $3, $4, now())
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cleanupCancel()
-		if _, err := pool.Exec(cleanupCtx, `DELETE FROM outbox_events WHERE payload->>'video_id' = $1`, videoID.String()); err != nil {
-			t.Fatalf("delete test outbox events error = %v", err)
+		if _, execErr := pool.Exec(cleanupCtx, `DELETE FROM outbox_events WHERE payload->>'video_id' = $1`, videoID.String()); execErr != nil {
+			t.Fatalf("delete test outbox events error = %v", execErr)
 		}
-		if _, err := pool.Exec(cleanupCtx, `DELETE FROM videos WHERE id = $1`, videoID.String()); err != nil {
-			t.Fatalf("delete test video error = %v", err)
+		if _, execErr := pool.Exec(cleanupCtx, `DELETE FROM videos WHERE id = $1`, videoID.String()); execErr != nil {
+			t.Fatalf("delete test video error = %v", execErr)
 		}
 	})
 
@@ -67,19 +67,19 @@ VALUES ($1, $2, $3, $4, now())
 	}{
 		"01978a7a-8a40-7a0d-9b2f-6f0c1e5f1001": {
 			title:    "Planet 1.5 MB",
-			filePath: "http://localhost:8888/videos/planet_1.5mb.mp4",
+			filePath: "/videos/planet_1.5mb.mp4",
 		},
 		"01978a7a-8a40-7a0d-9b2f-6f0c1e5f1002": {
 			title:    "Planet 3 MB",
-			filePath: "http://localhost:8888/videos/planet_3mb.mp4",
+			filePath: "/videos/planet_3mb.mp4",
 		},
 		"01978a7a-8a40-7a0d-9b2f-6f0c1e5f1003": {
 			title:    "Planet 10 MB",
-			filePath: "http://localhost:8888/videos/planet_10mb.mp4",
+			filePath: "/videos/planet_10mb.mp4",
 		},
 		"01978a7a-8a40-7a0d-9b2f-6f0c1e5f1004": {
 			title:    "Planet 18 MB",
-			filePath: "http://localhost:8888/videos/planet_18mb.mp4",
+			filePath: "/videos/planet_18mb.mp4",
 		},
 	}
 	for _, video := range videos {
@@ -115,19 +115,19 @@ VALUES ($1, $2, $3, $4, now())
 	if err != nil {
 		t.Fatalf("uuid.NewV7() error = %v", err)
 	}
-	if _, err := repository.GetByID(ctx, missingID); !errors.Is(err, domain.ErrVideoNotFound) {
-		t.Fatalf("GetByID() error = %v, want ErrVideoNotFound", err)
+	if _, getErr := repository.GetByID(ctx, missingID); !errors.Is(getErr, domain.ErrVideoNotFound) {
+		t.Fatalf("GetByID() error = %v, want ErrVideoNotFound", getErr)
 	}
 
-	incremented, err := repository.IncrementViewsWithOutbox(ctx, videoID)
+	incremented, err := repository.IncrementViews(ctx, videoID)
 	if err != nil {
-		t.Fatalf("IncrementViewsWithOutbox() error = %v", err)
+		t.Fatalf("IncrementViews() error = %v", err)
 	}
 	if incremented.Views != video.Views+1 {
-		t.Fatalf("IncrementViewsWithOutbox().Views = %d, want %d", incremented.Views, video.Views+1)
+		t.Fatalf("IncrementViews().Views = %d, want %d", incremented.Views, video.Views+1)
 	}
-	if _, err := repository.IncrementViewsWithOutbox(ctx, missingID); !errors.Is(err, domain.ErrVideoNotFound) {
-		t.Fatalf("IncrementViewsWithOutbox() error = %v, want ErrVideoNotFound", err)
+	if _, incrementErr := repository.IncrementViews(ctx, missingID); !errors.Is(incrementErr, domain.ErrVideoNotFound) {
+		t.Fatalf("IncrementViews() error = %v, want ErrVideoNotFound", incrementErr)
 	}
 
 	var outboxCount int

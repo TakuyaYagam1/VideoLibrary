@@ -1,6 +1,6 @@
 all: false
 dir: internal/usecase/mock
-filename: "{{.InterfaceName}}_mock.go"
+filename: "{{.InterfaceName | snakecase}}_mock.go"
 force-file-write: true
 formatter: goimports
 include-auto-generated: false
@@ -12,7 +12,7 @@ structname: "Mock{{.InterfaceName}}"
 template: testify
 template-schema: "{{.Template}}.schema.json"
 packages:
-  github.com/TakuyaYagam1/VideoLibrary/backend/internal/usecase:
+  github.com/TakuyaYagam1/VideoLibrary/backend/internal/repo:
     interfaces:
-      VideoCache:
       VideoRepository:
+      Cache:

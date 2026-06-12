@@ -12,16 +12,33 @@ import (
 )
 
 const fetchUnprocessedOutbox = `-- name: FetchUnprocessedOutbox :many
-SELECT
-    id,
-    event_type,
-    payload,
-    created_at,
-    processed_at
-FROM outbox_events
-WHERE processed_at IS NULL
-ORDER BY created_at, id
-LIMIT $1
+WITH claimed AS (
+    SELECT id
+    FROM outbox_events
+    WHERE processed_at IS NULL
+      AND failed_at IS NULL
+      AND (locked_until IS NULL OR locked_until < now())
+    ORDER BY created_at, id
+    LIMIT $1
+    FOR UPDATE SKIP LOCKED
+)
+UPDATE outbox_events AS event
+SET processing_at = now(),
+    locked_until = now() + interval '30 seconds',
+    attempts = event.attempts + 1
+FROM claimed
+WHERE event.id = claimed.id
+RETURNING
+    event.id,
+    event.event_type,
+    event.payload,
+    event.created_at,
+    event.processed_at,
+    event.processing_at,
+    event.locked_until,
+    event.failed_at,
+    event.attempts,
+    event.failure_error
 `
 
 func (q *Queries) FetchUnprocessedOutbox(ctx context.Context, limitCount int32) ([]OutboxEvent, error) {
@@ -39,6 +56,11 @@ func (q *Queries) FetchUnprocessedOutbox(ctx context.Context, limitCount int32) 
 			&i.Payload,
 			&i.CreatedAt,
 			&i.ProcessedAt,
+			&i.ProcessingAt,
+			&i.LockedUntil,
+			&i.FailedAt,
+			&i.Attempts,
+			&i.FailureError,
 		); err != nil {
 			return nil, err
 		}
@@ -75,9 +97,17 @@ type InsertOutboxEventParams struct {
 	Payload   []byte      `json:"payload"`
 }
 
-func (q *Queries) InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventParams) (OutboxEvent, error) {
+type InsertOutboxEventRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	EventType   string             `json:"event_type"`
+	Payload     []byte             `json:"payload"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	ProcessedAt pgtype.Timestamptz `json:"processed_at"`
+}
+
+func (q *Queries) InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventParams) (InsertOutboxEventRow, error) {
 	row := q.db.QueryRow(ctx, insertOutboxEvent, arg.ID, arg.EventType, arg.Payload)
-	var i OutboxEvent
+	var i InsertOutboxEventRow
 	err := row.Scan(
 		&i.ID,
 		&i.EventType,
@@ -88,14 +118,59 @@ func (q *Queries) InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventPa
 	return i, err
 }
 
+const markOutboxFailed = `-- name: MarkOutboxFailed :exec
+UPDATE outbox_events
+SET failed_at = now(),
+    processing_at = NULL,
+    locked_until = NULL,
+    failure_error = $1
+WHERE id = $2
+  AND processed_at IS NULL
+  AND failed_at IS NULL
+`
+
+type MarkOutboxFailedParams struct {
+	FailureError pgtype.Text `json:"failure_error"`
+	ID           pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) MarkOutboxFailed(ctx context.Context, arg MarkOutboxFailedParams) error {
+	_, err := q.db.Exec(ctx, markOutboxFailed, arg.FailureError, arg.ID)
+	return err
+}
+
 const markOutboxProcessed = `-- name: MarkOutboxProcessed :exec
 UPDATE outbox_events
-SET processed_at = now()
+SET processed_at = now(),
+    processing_at = NULL,
+    locked_until = NULL,
+    failure_error = NULL
 WHERE id = $1
   AND processed_at IS NULL
 `
 
 func (q *Queries) MarkOutboxProcessed(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, markOutboxProcessed, id)
+	return err
+}
+
+const releaseOutbox = `-- name: ReleaseOutbox :exec
+UPDATE outbox_events
+SET processing_at = NULL,
+    locked_until = $1,
+    failure_error = $2
+WHERE id = $3
+  AND processed_at IS NULL
+  AND failed_at IS NULL
+`
+
+type ReleaseOutboxParams struct {
+	LockedUntil  pgtype.Timestamptz `json:"locked_until"`
+	FailureError pgtype.Text        `json:"failure_error"`
+	ID           pgtype.UUID        `json:"id"`
+}
+
+func (q *Queries) ReleaseOutbox(ctx context.Context, arg ReleaseOutboxParams) error {
+	_, err := q.db.Exec(ctx, releaseOutbox, arg.LockedUntil, arg.FailureError, arg.ID)
 	return err
 }
