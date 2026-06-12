@@ -81,9 +81,8 @@ compose-infra: ## Start PostgreSQL, Redis, SeaweedFS, and the official SeaweedFS
 	@echo "Infrastructure started"
 	@echo "SeaweedFS admin UI will be available through proxy at $(SEAWEEDFS_ADMIN_URL)"
 
-compose-full: compose-infra ## Start infrastructure, backend, proxy, and seed storage assets.
+compose-full: compose-infra ## Start infrastructure, seed storage assets, backend, and proxy.
 	$(BASE_STACK) up --build -d app proxy
-	$(MAKE) upload-assets
 	@echo "Full stack started"
 
 compose-up-all: compose-full ## Alias for compose-full.
@@ -207,8 +206,8 @@ verify-seaweedfs-admin: ## Verify the official SeaweedFS admin UI is reachable.
 
 seed-assets: upload-assets verify-assets ## Upload and verify local video assets.
 
-verify-compose: ## Validate Docker Compose config, including the tools profile.
-	$(BASE_STACK) --profile tools config >/tmp/videolibrary-compose.yml
+verify-compose: ## Validate Docker Compose config.
+	$(BASE_STACK) config >/tmp/videolibrary-compose.yml
 
 verify-caddy: ## Validate Caddyfile through the Compose/Make path.
 	$(BASE_STACK) run --rm --no-deps proxy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile

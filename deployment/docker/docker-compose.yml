@@ -58,6 +58,8 @@ services:
         condition: service_healthy
       seaweedfs:
         condition: service_healthy
+      asset-seeder:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://localhost:$${BACKEND_PORT}/readyz >/dev/null 2>&1"]
       interval: 5s
@@ -222,8 +224,6 @@ services:
 
   asset-seeder:
     image: curlimages/curl:8.20.0
-    profiles:
-      - tools
     environment:
       ASSETS_DIR: /assets
       SEAWEEDFS_FILER_URL: "http://seaweedfs:${SEAWEEDFS_PORT:?SEAWEEDFS_PORT is required}"
@@ -237,6 +237,7 @@ services:
     depends_on:
       seaweedfs:
         condition: service_healthy
+    restart: "no"
 
 volumes:
   caddy-data:
