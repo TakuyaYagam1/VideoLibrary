@@ -50,23 +50,69 @@ jobs:
     name: security
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: 8.24.3
+      CI_COMPOSE_ENV: .env.ci
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.3
 
+      - name: Install gitleaks
+        run: |
+          curl --fail --silent --show-error --location \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            --output /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p artifacts
+          gitleaks detect --source . --redact -v --exit-code=2 --report-format=sarif --report-path=artifacts/gitleaks-results.sarif
+
+      - name: Upload gitleaks artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gitleaks-artifacts
+          path: artifacts/
+          if-no-files-found: ignore
+
+      - name: Prepare compose validation env
+        run: |
+          cp .env.example "${CI_COMPOSE_ENV}"
+          hash="$(docker run --rm caddy:2.11.4-alpine caddy hash-password --plaintext ci-seaweedfs-password)"
+          export SEAWEEDFS_ADMIN_BASIC_AUTH_HASH="${hash}"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["CI_COMPOSE_ENV"])
+          replacements = {
+              "POSTGRES_PASSWORD": "ci-postgres-password",
+              "REDIS_PASSWORD": "ci-redis-password",
+              "SEAWEEDFS_ADMIN_PASSWORD": "ci-seaweedfs-password",
+              "SEAWEEDFS_ADMIN_BASIC_AUTH_HASH": f"'{os.environ['SEAWEEDFS_ADMIN_BASIC_AUTH_HASH']}'",
+          }
+
+          lines = []
+          for line in path.read_text().splitlines():
+              key = line.split("=", 1)[0]
+              if key in replacements:
+                  lines.append(f"{key}={replacements[key]}")
+              else:
+                  lines.append(line)
+          path.write_text("\n".join(lines) + "\n")
+          PY
 
       - name: Validate compose config
         working-directory: backend
-        run: make verify-compose
+        run: ENV_FILE=../${CI_COMPOSE_ENV} make verify-compose
 
       - name: Validate Caddy config
         working-directory: backend
-        run: make verify-caddy
+        run: ENV_FILE=../${CI_COMPOSE_ENV} make verify-caddy
 
   deps-audit:
     name: deps-audit

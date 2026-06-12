@@ -20,6 +20,12 @@ linters:
     gosec:
       severity: medium
       confidence: medium
+  exclusions:
+    generated: lax
+    paths:
+      - ".*\\.gen\\.go$"
+      - ".*_mock\\.go$"
+      - ".*\\.sql\\.go$"
 
 formatters:
   enable:
@@ -29,10 +35,3 @@ formatters:
 run:
   relative-path-mode: gomod
   timeout: 5m
-
-exclusions:
-  generated: lax
-  paths:
-    - ".*\\.gen\\.go$"
-    - ".*_mock\\.go$"
-    - ".*\\.sql\\.go$"
